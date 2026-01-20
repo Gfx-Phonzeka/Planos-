@@ -1,30 +1,44 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import autoTable from 'jspdf-autotable';
 import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
+// Importação dinâmica segura (previne erros de build no Vercel com jspdf)
+let jsPDF: any;
+let html2canvas: any;
+let autoTable: any;
+
+import('jspdf').then(module => jsPDF = module.default);
+import('html2canvas').then(module => html2canvas = module.default);
+import('jspdf-autotable').then(module => autoTable = module.default);
+
 const App: React.FC = () => {
+  // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
   const [cameras, setCameras] = useState<PlacedCamera[]>([]);
   const [projectTitle, setProjectTitle] = useState('EVENTO_BROADCAST_LIVE');
   const [location, setLocation] = useState('Estádio Nacional');
   const [time, setTime] = useState('21:00');
   
+  // --- ESTADO DE INTERAÇÃO ---
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
+  
+  // --- ESTADO DE DRAG & DROP ---
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
+  const [isDraggingItem, setIsDraggingItem] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const draggingIdRef = useRef<string | null>(null);
 
   const canvasRef = useRef<SVGSVGElement>(null);
   const captureTargetRef = useRef<HTMLDivElement>(null);
-  const draggingIdRef = useRef<string | null>(null);
 
   const activeCamera = cameras.find(c => c.id === selectedId);
 
+  // --- LÓGICA DE COORDENADAS ---
   const getPointerPos = (e: any) => {
+    // Unifica Touch e Mouse
     const event = e.touches && e.touches.length > 0 ? e.touches[0] : e;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
@@ -39,26 +53,47 @@ const App: React.FC = () => {
     return 'Field of Play';
   };
 
+  // --- LÓGICA DE INPUT (Mouse/Touch) ---
   const handleStart = (e: any) => {
-    if (e.target.closest('button') || e.target.closest('input') || isEditingText) return;
+    // Ignorar cliques em botões ou inputs da UI
+    if (e.target.closest('button') || e.target.closest('input') || (isEditingText && e.target.closest('.text-annotation'))) return;
     
+    const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
+
+    // 1. Verificar se clicou num Handle (Ponto de Vetor)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
-      if (e.cancelable) e.preventDefault();
+      if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       setActiveHandle({ id: handle.dataset.id!, index: parseInt(handle.dataset.index!) });
       return;
     }
 
-    const item = target.closest('.camera-item') as HTMLElement;
+    // 2. Verificar se clicou num Item (Icone, Texto ou Vetor)
+    const item = target.closest('.draggable-item') as HTMLElement;
+    
     if (item) {
-      if (e.cancelable) e.preventDefault();
+      if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       const id = item.dataset.id!;
-      setSelectedId(id);
-      draggingIdRef.current = id;
+      const currentCam = cameras.find(c => c.id === id);
+      
+      if (currentCam) {
+        setSelectedId(id);
+        draggingIdRef.current = id;
+        setIsDraggingItem(true);
+        
+        // Calcular offset para o arrasto ser suave (sem "saltar" para o centro do rato)
+        if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
+           setDragOffset({ x: pos.x, y: pos.y }); 
+        } else {
+           setDragOffset({ x: pos.x - currentCam.x, y: pos.y - currentCam.y });
+        }
+      }
     } else {
+      // Clicou no vazio (fundo do canvas)
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
+        setIsEditingText(false);
       }
     }
   };
@@ -66,16 +101,20 @@ const App: React.FC = () => {
   const handleMove = useCallback((e: any) => {
     if (isEditingText || !canvasRef.current) return;
     if (!activeHandle && !draggingIdRef.current) return;
-    if (e.cancelable) e.preventDefault();
+    
+    // Evitar scroll em touch devices enquanto arrasta
+    if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
 
     const pos = getPointerPos(e);
 
+    // MOVENDO PONTOS (Vetores)
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
           const updates: any = {};
           if (activeHandle.index === 1) {
             updates.x1 = pos.x; updates.y1 = pos.y;
+            // Atualiza centro visual
             updates.x = (pos.x + (c.x2 || 0)) / 2;
             updates.y = (pos.y + (c.y2 || 0)) / 2;
           } else {
@@ -90,26 +129,46 @@ const App: React.FC = () => {
       return;
     }
 
+    // MOVENDO ITENS (Câmaras, Texto, Vetores inteiros)
     if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
-          const dx = pos.x - c.x;
-          const dy = pos.y - c.y;
-          const updates: any = { x: pos.x, y: pos.y, position: detectZone(pos.x, pos.y, selectedSport) };
-          if (c.x1 !== undefined) {
-            updates.x1 = c.x1 + dx; updates.y1 = c.y1 + dy;
-            updates.x2 = c.x2! + dx; updates.y2 = c.y2! + dy;
+          
+          // Lógica Especial para Vetores (Move tudo junto)
+          if (c.type === CameraType.ARROW || c.type === CameraType.LINE) {
+             const dx = pos.x - dragOffset.x;
+             const dy = pos.y - dragOffset.y;
+             setDragOffset({ x: pos.x, y: pos.y }); // Reset para próximo frame
+             
+             return { 
+               ...c, 
+               x: pos.x, y: pos.y, 
+               x1: (c.x1 || 0) + dx, y1: (c.y1 || 0) + dy,
+               x2: (c.x2 || 0) + dx, y2: (c.y2 || 0) + dy,
+               position: detectZone(pos.x, pos.y, selectedSport)
+             };
           }
-          return { ...c, ...updates };
+
+          // Lógica Normal (Câmaras e Texto)
+          const newX = pos.x - dragOffset.x;
+          const newY = pos.y - dragOffset.y;
+          
+          return { 
+            ...c, 
+            x: newX, 
+            y: newY, 
+            position: detectZone(newX, newY, selectedSport) 
+          };
         }
         return c;
       }));
     }
-  }, [selectedSport, isEditingText, activeHandle]);
+  }, [selectedSport, isEditingText, activeHandle, dragOffset]);
 
   const handleEnd = useCallback(() => { 
     draggingIdRef.current = null; 
     setActiveHandle(null);
+    setIsDraggingItem(false);
   }, []);
 
   useEffect(() => {
@@ -125,6 +184,7 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
+  // --- DRAG & DROP (Biblioteca -> Canvas) ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
@@ -163,6 +223,7 @@ const App: React.FC = () => {
     setDraggedType(null);
   };
 
+  // --- UTILS ---
   const removeCamera = (id: string) => {
     setCameras(prev => {
       const filtered = prev.filter(c => c.id !== id);
@@ -180,25 +241,36 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
+  // --- PDF EXPORT (SMART CROP) ---
   const exportPDF = async () => {
-    const target = captureTargetRef.current;
-    if (!target) return;
+    if (!captureTargetRef.current || !jsPDF || !html2canvas) return;
     
+    // Smart Crop: Calcular limites
     let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
-    cameras.forEach(cam => {
-      if (cam.x1 !== undefined) {
-        minX = Math.min(minX, cam.x1, cam.x2!); minY = Math.min(minY, cam.y1!, cam.y2!);
-        maxX = Math.max(maxX, cam.x1, cam.x2!); maxY = Math.max(maxY, cam.y1!, cam.y2!);
-      } else {
-        minX = Math.min(minX, cam.x - 50); minY = Math.min(minY, cam.y - 50);
-        maxX = Math.max(maxX, cam.x + 50); maxY = Math.max(maxY, cam.y + 50);
-      }
-    });
-    const padding = 100;
-    const bounds = { x: minX - padding + 128, y: minY - padding + 128, w: (maxX - minX) + (padding * 2), h: (maxY - minY) + (padding * 2) };
+    
+    if(cameras.length > 0) {
+        minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+        cameras.forEach(cam => {
+        if (cam.x1 !== undefined) {
+            minX = Math.min(minX, cam.x1, cam.x2!); minY = Math.min(minY, cam.y1!, cam.y2!);
+            maxX = Math.max(maxX, cam.x1, cam.x2!); maxY = Math.max(maxY, cam.y1!, cam.y2!);
+        } else {
+            minX = Math.min(minX, cam.x - 50); minY = Math.min(minY, cam.y - 50);
+            maxX = Math.max(maxX, cam.x + 50); maxY = Math.max(maxY, cam.y + 50);
+        }
+        });
+        const padding = 100;
+        minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+        minX = Math.max(0, minX); minY = Math.max(0, minY);
+        maxX = Math.min(selectedSport.dimensions.width, maxX);
+        maxY = Math.min(selectedSport.dimensions.height, maxY);
+    }
 
-    const canvas = await html2canvas(target, { 
-      scale: 2, x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h,
+    const w = maxX - minX;
+    const h = maxY - minY;
+
+    const canvas = await html2canvas(captureTargetRef.current, { 
+      scale: 2, x: minX, y: minY, width: w, height: h,
       backgroundColor: '#2D2D2D', useCORS: true
     });
     
@@ -209,9 +281,11 @@ const App: React.FC = () => {
     doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
     
     const imgData = canvas.toDataURL('image/png');
-    const imgRatio = canvas.width / canvas.height;
+    const imgRatio = w / h;
     let finalW = 180; let finalH = finalW / imgRatio;
+    
     if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
+    
     doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
     
     const tableData = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
@@ -225,24 +299,47 @@ const App: React.FC = () => {
     doc.save(`${projectTitle}.pdf`);
   };
 
+  // --- RENDERIZADORES ---
   const renderItem = (cam: PlacedCamera) => {
+    const isSelected = selectedId === cam.id;
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
+    // 1. RENDER TEXTO
     if (isText) {
       return (
         <div 
-          className={`text-annotation ${isEditingText && selectedId === cam.id ? 'pointer-events-auto' : 'pointer-events-none'}`}
-          contentEditable={isEditingText && selectedId === cam.id}
-          onBlur={(e) => { setIsEditingText(false); updateCameraProp(cam.id, { text: e.currentTarget.innerText }); }}
-          suppressContentEditableWarning
-          style={{ fontSize: `${14 * cam.scale}px`, transform: `rotate(${cam.rotation}deg)` }}
+          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
+          data-id={cam.id}
+          style={{ 
+             left: cam.x - 100,
+             top: cam.y - 20, 
+             width: 200, 
+             height: 40,
+             zIndex: isSelected ? 100 : 20,
+             cursor: 'move'
+          }}
         >
-          {cam.text}
+          <div 
+            className={`text-annotation w-full text-center ${isEditingText && isSelected ? 'pointer-events-auto cursor-text' : 'pointer-events-none'}`}
+            contentEditable={isEditingText && isSelected}
+            onBlur={(e) => { setIsEditingText(false); updateCameraProp(cam.id, { text: e.currentTarget.innerText }); }}
+            suppressContentEditableWarning
+            style={{ 
+                fontSize: `${14 * cam.scale}px`, 
+                transform: `rotate(${cam.rotation}deg)`,
+                color: '#FFF',
+                fontWeight: 'bold',
+                textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+            }}
+          >
+            {cam.text}
+          </div>
         </div>
       );
     }
 
+    // 2. RENDER VETORES
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -255,13 +352,17 @@ const App: React.FC = () => {
       const angle = Math.atan2(ly2 - ly1, lx2 - lx1) * 180 / Math.PI;
 
       return (
-        <div className="vector-item absolute pointer-events-none" style={{ left: vMinX, top: vMinY, width: vW, height: vH }}>
+        <div 
+           className="draggable-item absolute" 
+           data-id={cam.id}
+           style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}
+        >
           <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
-            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ pointerEvents: 'auto', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); setSelectedId(cam.id); }} />
-            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="#FFF" strokeWidth="2" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} />
-            {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill="#FFF" transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} />}
+            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer' }} />
+            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
+            {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill={isSelected ? "#2196F3" : "#FFF"} transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} style={{ pointerEvents: 'none' }} />}
           </svg>
-          {selectedId === cam.id && (
+          {isSelected && (
             <>
               <div className="handle absolute" data-id={cam.id} data-index="1" style={{ left: lx1, top: ly1, transform: 'translate(-50%, -50%)' }} />
               <div className="handle absolute" data-id={cam.id} data-index="2" style={{ left: lx2, top: ly2, transform: 'translate(-50%, -50%)' }} />
@@ -271,13 +372,50 @@ const App: React.FC = () => {
       );
     }
 
+    // 3. RENDER CÂMARAS (NOVA LÓGICA DE ROTAÇÃO)
     return (
-      <div className="relative" style={{ transform: `rotate(${cam.rotation}deg)` }}>
-        <div style={{ transform: `scaleX(${cam.flipped ? -1 : 1}) scale(${cam.scale})`, transformOrigin: 'center' }}>
-          {CAMERA_ASSETS[cam.type].icon}
-        </div>
-        <div className="absolute bg-black border border-white rounded-full w-[18px] h-[18px] -top-2 -right-2 flex items-center justify-center text-[10px] font-bold text-white shadow-md z-[20]">
-          {cam.nr}
+      <div 
+         className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
+         data-id={cam.id}
+         style={{ 
+            left: cam.x - 20,
+            top: cam.y - 20, 
+            width: 40, 
+            height: 40,
+            zIndex: isSelected ? 100 : 20,
+            cursor: 'move'
+         }}
+      >
+        <div className="relative w-full h-full flex items-center justify-center">
+          
+          {/* ICONE: Aplica Rotação AQUI (Independente) */}
+          <div style={{ 
+              transform: `rotate(${cam.rotation}deg) scaleX(${cam.flipped ? -1 : 1}) scale(${cam.scale})`, 
+              transformOrigin: 'center',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+          }}>
+            {CAMERA_ASSETS[cam.type].icon}
+          </div>
+          
+          {/* BADGE: Posição Absoluta (SEM ROTAÇÃO - Sempre direito) */}
+          {cam.nr && (
+            <div 
+               className="absolute bg-black border border-white rounded-full flex items-center justify-center text-white font-bold shadow-md z-[20]"
+               style={{
+                  width: '18px',
+                  height: '18px',
+                  fontSize: '10px',
+                  top: '-5px',
+                  right: '-5px'
+               }}
+            >
+              {cam.nr}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -285,6 +423,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden select-none bg-[#1E1E1E] w-screen" onMouseDown={handleStart} onTouchStart={handleStart}>
+      {/* HEADER */}
       <header className="h-16 bg-[#121212] border-b border-white/5 flex items-center justify-between px-6 z-30 shrink-0 shadow-lg">
         <div className="flex items-center gap-8">
           <div className="flex flex-col">
@@ -306,6 +445,7 @@ const App: React.FC = () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden w-full">
+        {/* SIDEBAR ESQUERDA */}
         <aside className="w-[280px] bg-[#1E1E1E] border-r border-white/5 overflow-y-auto shrink-0 z-10">
           <div className="p-4 text-[8px] font-bold text-gray-600 uppercase tracking-widest border-b border-white/5">Disciplinas</div>
           {SPORTS_DATABASE.map(sport => (
@@ -313,26 +453,32 @@ const App: React.FC = () => {
           ))}
         </aside>
 
+        {/* ÁREA CENTRAL (CANVAS) */}
         <main className="flex-1 relative bg-[#252526] flex flex-col overflow-hidden">
           <div className="flex-1 overflow-auto bg-[#2D2D2D] canvas-container">
-            <div ref={captureTargetRef} id="capture-target" className="relative p-32 inline-block" style={{ width: Math.max(selectedSport.dimensions.width + 600, 2000), height: Math.max(selectedSport.dimensions.height + 600, 1600) }} onDragOver={e => e.preventDefault()} onDrop={onDrop} onDoubleClick={() => { const item = cameras.find(c => c.id === selectedId); if (item?.type === CameraType.TEXT) setIsEditingText(true); }}>
+            <div 
+               ref={captureTargetRef} 
+               id="capture-target" 
+               className="relative p-32 inline-block" 
+               style={{ width: Math.max(selectedSport.dimensions.width + 600, 2000), height: Math.max(selectedSport.dimensions.height + 600, 1600) }} 
+               onDragOver={e => e.preventDefault()} 
+               onDrop={onDrop}
+               onDoubleClick={() => { const item = cameras.find(c => c.id === selectedId); if (item?.type === CameraType.TEXT) setIsEditingText(true); }}
+            >
               <svg ref={canvasRef} width={selectedSport.dimensions.width} height={selectedSport.dimensions.height} className="bg-[#121212] shadow-2xl rounded-sm pointer-events-none ring-1 ring-white/10 fop-svg">
                 {selectedSport.render()}
               </svg>
-              <div className="absolute inset-0 pointer-events-none p-32">
+              
+              {/* CAMADA DE ELEMENTOS */}
+              <div className="absolute inset-0 p-32">
                 <div className="relative w-full h-full">
-                  {cameras.map(cam => {
-                    const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
-                    return (
-                      <div key={cam.id} data-id={cam.id} data-type={cam.type} className={`camera-item pointer-events-auto flex items-center justify-center ${selectedId === cam.id ? 'selected-cam' : ''}`} style={isVector ? {} : { left: cam.x, top: cam.y, transform: 'translate(-50%, -50%)', zIndex: selectedId === cam.id ? 100 : 10 }}>
-                        {renderItem(cam)}
-                      </div>
-                    );
-                  })}
+                  {cameras.map(cam => renderItem(cam))}
                 </div>
               </div>
             </div>
           </div>
+          
+          {/* TABELA RODAPÉ */}
           <footer className="h-40 bg-[#121212] border-t border-white/5 overflow-y-auto shrink-0 z-10">
             <table className="w-full text-left text-[9px]">
               <thead className="sticky top-0 bg-[#121212] text-gray-600 uppercase font-black border-b border-white/5">
@@ -349,6 +495,7 @@ const App: React.FC = () => {
           </footer>
         </main>
 
+        {/* SIDEBAR DIREITA */}
         <aside className="w-[280px] bg-[#1E1E1E] border-l border-white/10 flex flex-col shrink-0 z-10 overflow-y-auto">
           <div className="p-5 border-b border-white/10">
             <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit de Assets</h3>
