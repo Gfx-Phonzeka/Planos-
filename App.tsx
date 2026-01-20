@@ -3,15 +3,6 @@ import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
-// Carregamento dinâmico das bibliotecas para evitar erros de Build no Vercel
-let jsPDF: any;
-let html2canvas: any;
-let autoTable: any;
-
-import('jspdf').then(module => jsPDF = module.default);
-import('html2canvas').then(module => html2canvas = module.default);
-import('jspdf-autotable').then(module => autoTable = module.default);
-
 const App: React.FC = () => {
   // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
@@ -54,13 +45,13 @@ const App: React.FC = () => {
 
   // --- LÓGICA DE INÍCIO DE ARRASTO (HandleStart) ---
   const handleStart = (e: any) => {
-    // Ignora cliques na UI (botões, inputs)
+    // Ignora cliques na UI
     if (e.target.closest('button') || e.target.closest('input') || (isEditingText && e.target.closest('.text-annotation'))) return;
     
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 1. DETETAR HANDLE (Pontos de Edição dos Vetores)
+    // 1. DETETAR HANDLE (Pontos de Edição)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -68,12 +59,11 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. DETETAR ITEM ARRÁSTAVEL (Unificado: Câmaras, Texto e Vetores)
-    // A classe .draggable-item é fundamental aqui
-    const item = target.closest('.draggable-item') as HTMLElement;
+    // 2. DETETAR QUALQUER ITEM (Câmara, Texto, Vetor)
+    // Procuramos pelas várias classes possíveis para garantir que apanha tudo
+    const item = target.closest('.camera-item, .vector-item, .text-annotation') as HTMLElement;
     
     if (item) {
-      // Se não for touch, previne o comportamento padrão para evitar seleção de texto indesejada
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       
       const id = item.dataset.id!;
@@ -84,17 +74,15 @@ const App: React.FC = () => {
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
-        // Calcular Offset para arrasto suave
+        // Calcular Offset
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
-           // Vetores usam coordenadas absolutas nos endpoints, o offset é a posição atual do rato
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
-           // Itens normais usam centro (x,y)
            setDragOffset({ x: pos.x - currentCam.x, y: pos.y - currentCam.y });
         }
       }
     } else {
-      // Clicou no vazio (Fundo) -> Desselecionar
+      // Clicou no vazio
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
         setIsEditingText(false);
@@ -107,19 +95,17 @@ const App: React.FC = () => {
     if (isEditingText || !canvasRef.current) return;
     if (!activeHandle && !draggingIdRef.current) return;
     
-    // Evita scroll no telemóvel enquanto arrasta
     if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
 
     const pos = getPointerPos(e);
 
-    // CASO 1: EDITAR PONTOS (Redimensionar Linhas/Setas)
+    // CASO 1: EDITAR PONTOS
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
           const updates: any = {};
           if (activeHandle.index === 1) {
             updates.x1 = pos.x; updates.y1 = pos.y;
-            // Atualiza o ponto central (x,y) para efeitos de renderização
             updates.x = (pos.x + (c.x2 || 0)) / 2;
             updates.y = (pos.y + (c.y2 || 0)) / 2;
           } else {
@@ -134,16 +120,15 @@ const App: React.FC = () => {
       return;
     }
 
-    // CASO 2: ARRASTAR ITEM INTEIRO
+    // CASO 2: ARRASTAR ITEM
     if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
           
-          // Se for Vetor, move os dois pontos (x1,y1 e x2,y2) pelo delta
           if (c.type === CameraType.ARROW || c.type === CameraType.LINE) {
              const dx = pos.x - dragOffset.x;
              const dy = pos.y - dragOffset.y;
-             setDragOffset({ x: pos.x, y: pos.y }); // Atualiza referência para o próximo frame
+             setDragOffset({ x: pos.x, y: pos.y }); 
              
              return { 
                ...c, 
@@ -154,7 +139,6 @@ const App: React.FC = () => {
              };
           }
 
-          // Se for Câmara/Texto, move apenas x,y
           const newX = pos.x - dragOffset.x;
           const newY = pos.y - dragOffset.y;
           
@@ -244,15 +228,18 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- EXPORTAR PDF (Corrigido) ---
+  // --- EXPORTAR PDF (CORRIGIDO: Window Size & Bounds) ---
   const exportPDF = async () => {
-    if (!captureTargetRef.current || !jsPDF || !html2canvas) return;
+    const { jsPDF } = (window as any).jspdf;
+    const target = captureTargetRef.current;
+    if (!target) return;
     
-    // 1. Calcular Limites do Conteúdo (Bounding Box)
+    // 1. Calcular Limites (Min/Max X e Y)
+    // Começa com os limites do campo de jogo (para garantir que aparece sempre o campo todo)
     let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
     
+    // Expande os limites se houver câmaras fora do campo
     if(cameras.length > 0) {
-        minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
         cameras.forEach(cam => {
         if (cam.x1 !== undefined) {
             minX = Math.min(minX, cam.x1, cam.x2!); minY = Math.min(minY, cam.y1!, cam.y2!);
@@ -262,28 +249,30 @@ const App: React.FC = () => {
             maxX = Math.max(maxX, cam.x + 50); maxY = Math.max(maxY, cam.y + 50);
         }
         });
-        
-        // Adicionar margem de segurança
-        const padding = 100;
-        minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-        
-        // Garantir que não corta o campo de jogo
-        minX = Math.max(0, minX); minY = Math.max(0, minY);
-        maxX = Math.min(selectedSport.dimensions.width, maxX);
-        maxY = Math.min(selectedSport.dimensions.height, maxY);
     }
+
+    // 2. Adicionar Padding Visual
+    const padding = 100;
+    minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+    
+    // Clampar a zero (não queremos coordenadas negativas no corte)
+    minX = Math.max(0, minX); minY = Math.max(0, minY);
+    // Garantir que o maxX vai pelo menos até ao fim do campo (caso não haja câmaras lá)
+    maxX = Math.max(selectedSport.dimensions.width + padding, maxX);
+    maxY = Math.max(selectedSport.dimensions.height + padding, maxY);
 
     const w = maxX - minX;
     const h = maxY - minY;
     
-    // 2. Compensar o Padding do Wrapper (p-32 = 128px)
-    // O html2canvas captura a partir do topo do elemento wrapper.
-    // O conteúdo real (SVG) começa em x=128, y=128.
+    // 3. Compensar o Padding do Wrapper (p-32 = 128px)
+    // O html2canvas captura o elemento 'target', que tem p-32. 
+    // O conteúdo (SVG) começa em (128, 128) dentro desse target.
     const wrapperOffset = 128;
     const captureX = minX + wrapperOffset;
     const captureY = minY + wrapperOffset;
 
-    const canvas = await html2canvas(captureTargetRef.current, { 
+    // 4. Captura com WindowWidth FORÇADO (Isto resolve o bug do "Zoom In/Corte")
+    const canvas = await (window as any).html2canvas(target, { 
       scale: 2, 
       x: captureX, 
       y: captureY, 
@@ -291,18 +280,16 @@ const App: React.FC = () => {
       height: h,
       backgroundColor: '#2D2D2D', 
       useCORS: true,
-      logging: false
+      windowWidth: target.scrollWidth + 500, // Força renderização total
+      windowHeight: target.scrollHeight + 500
     });
     
     const doc = new jsPDF('l', 'mm', 'a4');
-    
-    // Header PDF
     doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
     doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
     doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
     doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
     
-    // Imagem do FOP
     const imgData = canvas.toDataURL('image/png');
     const imgRatio = w / h;
     let finalW = 180; let finalH = finalW / imgRatio;
@@ -311,12 +298,11 @@ const App: React.FC = () => {
     
     doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
     
-    // Tabela
     const tableData = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
       .sort((a,b) => (a.nr || 0) - (b.nr || 0))
       .map(c => [c.nr?.toString(), `${c.position}`, CAMERA_ASSETS[c.type].label, c.lens || '86x']);
       
-    autoTable(doc, {
+    (doc as any).autoTable({
       head: [['NR', 'POSIÇÃO', 'EQUIPAMENTO', 'ÓTICA']], body: tableData, startY: 32, margin: { left: 200 },
       styles: { fontSize: 6.5, cellPadding: 1.5 }, headStyles: { fillColor: [255, 87, 34], textColor: 255 }, theme: 'grid'
     });
@@ -329,11 +315,10 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO (Corrigido para não ficar invisível)
     if (isText) {
       return (
         <div 
-          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
+          className={`text-annotation absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
           data-id={cam.id}
           style={{ 
              left: cam.x - 100, top: cam.y - 20, 
@@ -343,7 +328,7 @@ const App: React.FC = () => {
           }}
         >
           <div 
-            className={`text-annotation w-full text-center ${isEditingText && isSelected ? 'pointer-events-auto cursor-text' : 'pointer-events-none'}`}
+            className={`w-full text-center ${isEditingText && isSelected ? 'pointer-events-auto cursor-text' : 'pointer-events-none'}`}
             contentEditable={isEditingText && isSelected}
             onBlur={(e) => { setIsEditingText(false); updateCameraProp(cam.id, { text: e.currentTarget.innerText }); }}
             suppressContentEditableWarning
@@ -359,7 +344,6 @@ const App: React.FC = () => {
       );
     }
 
-    // 2. VETORES (Com Handles estilo PowerPoint)
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -373,43 +357,33 @@ const App: React.FC = () => {
 
       return (
         <div 
-           className="draggable-item absolute" 
+           className="vector-item absolute" 
            data-id={cam.id}
            style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}
         >
           <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
-            {/* Hit Area Grossa (Invisível) */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer' }} />
-            {/* Linha Visível */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
-            {/* Seta */}
             {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill={isSelected ? "#2196F3" : "#FFF"} transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} style={{ pointerEvents: 'none' }} />}
           </svg>
           
-          {/* HANDLES: Pontos de Edição (Estilo PowerPoint) */}
           {isSelected && (
             <>
-              {/* Ponto 1 */}
               <div 
-                className="handle absolute" 
-                data-id={cam.id} 
-                data-index="1" 
+                className="handle absolute" data-id={cam.id} data-index="1" 
                 style={{ 
                    left: lx1, top: ly1, 
                    width: '12px', height: '12px', 
-                   backgroundColor: '#FFF', border: '2px solid #2196F3', borderRadius: '50%',
+                   backgroundColor: '#FFF', border: '2px solid #2196F3', 
                    transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' 
                 }} 
               />
-              {/* Ponto 2 */}
               <div 
-                className="handle absolute" 
-                data-id={cam.id} 
-                data-index="2" 
+                className="handle absolute" data-id={cam.id} data-index="2" 
                 style={{ 
                    left: lx2, top: ly2, 
                    width: '12px', height: '12px', 
-                   backgroundColor: '#FFF', border: '2px solid #2196F3', borderRadius: '50%',
+                   backgroundColor: '#FFF', border: '2px solid #2196F3', 
                    transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' 
                 }} 
               />
@@ -419,10 +393,9 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS
     return (
       <div 
-         className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
+         className={`camera-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
          data-id={cam.id}
          style={{ 
             left: cam.x - 20, top: cam.y - 20, 
@@ -448,7 +421,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden select-none bg-[#1E1E1E] w-screen" onMouseDown={handleStart} onTouchStart={handleStart}>
-      {/* HEADER */}
       <header className="h-16 bg-[#121212] border-b border-white/5 flex items-center justify-between px-6 z-30 shrink-0 shadow-lg">
         <div className="flex items-center gap-8">
           <div className="flex flex-col">
@@ -470,7 +442,6 @@ const App: React.FC = () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden w-full">
-        {/* SIDEBAR ESQUERDA */}
         <aside className="w-[280px] bg-[#1E1E1E] border-r border-white/5 overflow-y-auto shrink-0 z-10">
           <div className="p-4 text-[8px] font-bold text-gray-600 uppercase tracking-widest border-b border-white/5">Disciplinas</div>
           {SPORTS_DATABASE.map(sport => (
@@ -478,31 +449,26 @@ const App: React.FC = () => {
           ))}
         </aside>
 
-        {/* ÁREA CENTRAL (CANVAS) */}
         <main className="flex-1 relative bg-[#252526] flex flex-col overflow-hidden">
           <div className="flex-1 overflow-auto bg-[#2D2D2D] canvas-container">
-            {/* O container tem p-32 (padding de 128px), importante para o offset do PDF */}
-            <div 
-               ref={captureTargetRef} 
-               id="capture-target" 
-               className="relative p-32 inline-block" 
-               style={{ width: Math.max(selectedSport.dimensions.width + 600, 2000), height: Math.max(selectedSport.dimensions.height + 600, 1600) }} 
-               onDragOver={e => e.preventDefault()} 
-               onDrop={onDrop}
-               onDoubleClick={() => { const item = cameras.find(c => c.id === selectedId); if (item?.type === CameraType.TEXT) setIsEditingText(true); }}
-            >
+            <div ref={captureTargetRef} id="capture-target" className="relative p-32 inline-block" style={{ width: Math.max(selectedSport.dimensions.width + 600, 2000), height: Math.max(selectedSport.dimensions.height + 600, 1600) }} onDragOver={e => e.preventDefault()} onDrop={onDrop} onDoubleClick={() => { const item = cameras.find(c => c.id === selectedId); if (item?.type === CameraType.TEXT) setIsEditingText(true); }}>
               <svg ref={canvasRef} width={selectedSport.dimensions.width} height={selectedSport.dimensions.height} className="bg-[#121212] shadow-2xl rounded-sm pointer-events-none ring-1 ring-white/10 fop-svg">
                 {selectedSport.render()}
               </svg>
-              
-              <div className="absolute inset-0 p-32">
+              <div className="absolute inset-0 pointer-events-none p-32">
                 <div className="relative w-full h-full">
-                  {cameras.map(cam => renderItem(cam))}
+                  {cameras.map(cam => {
+                    const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
+                    return (
+                      <div key={cam.id} data-id={cam.id} data-type={cam.type} className={`camera-item pointer-events-auto flex items-center justify-center ${selectedId === cam.id ? 'selected-cam' : ''}`} style={isVector ? {} : { left: cam.x, top: cam.y, transform: 'translate(-50%, -50%)', zIndex: selectedId === cam.id ? 100 : 10 }}>
+                        {renderItem(cam)}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
-          
           <footer className="h-40 bg-[#121212] border-t border-white/5 overflow-y-auto shrink-0 z-10">
             <table className="w-full text-left text-[9px]">
               <thead className="sticky top-0 bg-[#121212] text-gray-600 uppercase font-black border-b border-white/5">
@@ -519,10 +485,9 @@ const App: React.FC = () => {
           </footer>
         </main>
 
-        {/* SIDEBAR DIREITA */}
         <aside className="w-[280px] bg-[#1E1E1E] border-l border-white/10 flex flex-col shrink-0 z-10 overflow-y-auto">
           <div className="p-5 border-b border-white/10">
-            <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit</h3>
+            <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit de Assets</h3>
             <div className="grid grid-cols-3 gap-3">
               {Object.keys(CAMERA_ASSETS).map(type => (
                 <div key={type} draggable onDragStart={() => setDraggedType(type as CameraType)} className="bg-[#222] p-2 rounded flex flex-col items-center hover:bg-[#333] transition cursor-grab border border-transparent shadow-sm group">
