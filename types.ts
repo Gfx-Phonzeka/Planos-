@@ -24,10 +24,10 @@ export interface PlacedCamera {
   id: string | number;
   nr?: number;
   displayId?: string | number | null;
-  type: string; // Permitir string para flexibilidade
+  type: string; 
   x: number;
   y: number;
-  x1?: number; // Para vetores
+  x1?: number; 
   y1?: number;
   x2?: number;
   y2?: number;
@@ -39,7 +39,7 @@ export interface PlacedCamera {
   text?: string;
 }
 
-// Aliases para compatibilidade com o código do App.tsx
+// Estes exports extra resolvem os erros do App.tsx
 export type CameraItem = PlacedCamera;
 export type VectorItem = PlacedCamera;
 export interface Point { x: number; y: number; }
