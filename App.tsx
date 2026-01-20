@@ -59,7 +59,7 @@ const App: React.FC = () => {
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 2. HANDLE (Pontos de Edição dos Vetores)
+    // 2. HANDLE (Pontos de Edição)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -67,13 +67,13 @@ const App: React.FC = () => {
       return;
     }
 
-    // 3. ITEM ARRÁSTAVEL (Câmaras, Linhas, Texto)
+    // 3. ITEM ARRÁSTAVEL
     const item = target.closest('.draggable-item') as HTMLElement;
     if (item) {
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
-      // Bloqueia scroll no touch, exceto se for texto (para permitir seleção)
+      // Bloqueia scroll no touch, exceto se for texto
       if (currentCam?.type !== CameraType.TEXT) {
          if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       }
@@ -388,14 +388,17 @@ const App: React.FC = () => {
           {CAMERA_ASSETS[cam.type].icon}
         </div>
         {cam.nr && (
-          // CORREÇÃO PDF: Flexbox explicito para centrar
+          // CORREÇÃO PDF FINAL: Substituição do Flexbox por line-height explícito para centrar
           <div 
             className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30"
             style={{ 
-              width: '16px', height: '16px', 
-              fontSize: '9px', fontWeight: 'bold',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxSizing: 'border-box' // Garante que o border não estraga o tamanho
+              width: '16px', 
+              height: '16px', 
+              fontSize: '9px', 
+              fontWeight: 'bold',
+              textAlign: 'center', 
+              lineHeight: '14px', // (Altura 16px - Bordas 2px) = 14px de altura de linha
+              boxSizing: 'content-box' // Garante que o line-height funciona no conteúdo
             }}
           >
             {cam.nr}
