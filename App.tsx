@@ -3,7 +3,7 @@ import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
-// Importação segura das bibliotecas
+// Carregamento dinâmico das bibliotecas para evitar erros de Build no Vercel
 let jsPDF: any;
 let html2canvas: any;
 let autoTable: any;
@@ -36,7 +36,7 @@ const App: React.FC = () => {
 
   const activeCamera = cameras.find(c => c.id === selectedId);
 
-  // --- LÓGICA DE COORDENADAS ---
+  // --- HELPER: POSIÇÃO DO RATO ---
   const getPointerPos = (e: any) => {
     const event = e.touches && e.touches.length > 0 ? e.touches[0] : e;
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -52,15 +52,15 @@ const App: React.FC = () => {
     return 'Field of Play';
   };
 
-  // --- LÓGICA DE INPUT (Mouse/Touch) ---
+  // --- LÓGICA DE INÍCIO DE ARRASTO (HandleStart) ---
   const handleStart = (e: any) => {
-    // Ignorar cliques na UI
+    // Ignora cliques na UI (botões, inputs)
     if (e.target.closest('button') || e.target.closest('input') || (isEditingText && e.target.closest('.text-annotation'))) return;
     
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 1. Verificar Handles (Pontos de Vetor)
+    // 1. DETETAR HANDLE (Pontos de Edição dos Vetores)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -68,12 +68,14 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. Verificar Items (Câmaras, Texto, Vetores)
-    // CORREÇÃO CRÍTICA: Procura por .draggable-item que agora aplicamos a TODOS os elementos
+    // 2. DETETAR ITEM ARRÁSTAVEL (Unificado: Câmaras, Texto e Vetores)
+    // A classe .draggable-item é fundamental aqui
     const item = target.closest('.draggable-item') as HTMLElement;
     
     if (item) {
+      // Se não for touch, previne o comportamento padrão para evitar seleção de texto indesejada
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
+      
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
@@ -82,15 +84,17 @@ const App: React.FC = () => {
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
-        // Offset para arrasto suave
+        // Calcular Offset para arrasto suave
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
+           // Vetores usam coordenadas absolutas nos endpoints, o offset é a posição atual do rato
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
+           // Itens normais usam centro (x,y)
            setDragOffset({ x: pos.x - currentCam.x, y: pos.y - currentCam.y });
         }
       }
     } else {
-      // Clicou no vazio
+      // Clicou no vazio (Fundo) -> Desselecionar
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
         setIsEditingText(false);
@@ -98,21 +102,24 @@ const App: React.FC = () => {
     }
   };
 
+  // --- LÓGICA DE MOVIMENTO (HandleMove) ---
   const handleMove = useCallback((e: any) => {
     if (isEditingText || !canvasRef.current) return;
     if (!activeHandle && !draggingIdRef.current) return;
     
+    // Evita scroll no telemóvel enquanto arrasta
     if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
 
     const pos = getPointerPos(e);
 
-    // MOVENDO PONTOS (Vetores)
+    // CASO 1: EDITAR PONTOS (Redimensionar Linhas/Setas)
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
           const updates: any = {};
           if (activeHandle.index === 1) {
             updates.x1 = pos.x; updates.y1 = pos.y;
+            // Atualiza o ponto central (x,y) para efeitos de renderização
             updates.x = (pos.x + (c.x2 || 0)) / 2;
             updates.y = (pos.y + (c.y2 || 0)) / 2;
           } else {
@@ -127,16 +134,16 @@ const App: React.FC = () => {
       return;
     }
 
-    // MOVENDO ITENS
+    // CASO 2: ARRASTAR ITEM INTEIRO
     if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
           
-          // Vetores movem-se por inteiro
+          // Se for Vetor, move os dois pontos (x1,y1 e x2,y2) pelo delta
           if (c.type === CameraType.ARROW || c.type === CameraType.LINE) {
              const dx = pos.x - dragOffset.x;
              const dy = pos.y - dragOffset.y;
-             setDragOffset({ x: pos.x, y: pos.y }); 
+             setDragOffset({ x: pos.x, y: pos.y }); // Atualiza referência para o próximo frame
              
              return { 
                ...c, 
@@ -147,7 +154,7 @@ const App: React.FC = () => {
              };
           }
 
-          // Câmaras e Texto
+          // Se for Câmara/Texto, move apenas x,y
           const newX = pos.x - dragOffset.x;
           const newY = pos.y - dragOffset.y;
           
@@ -181,6 +188,7 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
+  // --- DROP DA BIBLIOTECA ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
@@ -236,14 +244,13 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- PDF EXPORT (CORRIGIDO TAMANHO E OFFSET) ---
+  // --- EXPORTAR PDF (Corrigido) ---
   const exportPDF = async () => {
     if (!captureTargetRef.current || !jsPDF || !html2canvas) return;
     
-    // Cálculo do Smart Crop
+    // 1. Calcular Limites do Conteúdo (Bounding Box)
     let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
     
-    // Se tiver items, focar na área relevante com margem
     if(cameras.length > 0) {
         minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
         cameras.forEach(cam => {
@@ -255,10 +262,12 @@ const App: React.FC = () => {
             maxX = Math.max(maxX, cam.x + 50); maxY = Math.max(maxY, cam.y + 50);
         }
         });
+        
+        // Adicionar margem de segurança
         const padding = 100;
         minX -= padding; minY -= padding; maxX += padding; maxY += padding;
         
-        // Limitar ao tamanho real do campo
+        // Garantir que não corta o campo de jogo
         minX = Math.max(0, minX); minY = Math.max(0, minY);
         maxX = Math.min(selectedSport.dimensions.width, maxX);
         maxY = Math.min(selectedSport.dimensions.height, maxY);
@@ -267,26 +276,33 @@ const App: React.FC = () => {
     const w = maxX - minX;
     const h = maxY - minY;
     
-    // CORREÇÃO: O container tem p-32 (128px). Temos de compensar esse offset.
-    // O html2canvas captura o elemento wrapper, logo (0,0) é o inicio do padding.
-    // O SVG começa em (128, 128).
-    const wrapperOffset = 128; // p-32 = 8rem = 128px (base 16)
+    // 2. Compensar o Padding do Wrapper (p-32 = 128px)
+    // O html2canvas captura a partir do topo do elemento wrapper.
+    // O conteúdo real (SVG) começa em x=128, y=128.
+    const wrapperOffset = 128;
     const captureX = minX + wrapperOffset;
     const captureY = minY + wrapperOffset;
 
     const canvas = await html2canvas(captureTargetRef.current, { 
       scale: 2, 
-      x: captureX, y: captureY, width: w, height: h,
+      x: captureX, 
+      y: captureY, 
+      width: w, 
+      height: h,
       backgroundColor: '#2D2D2D', 
-      useCORS: true
+      useCORS: true,
+      logging: false
     });
     
     const doc = new jsPDF('l', 'mm', 'a4');
+    
+    // Header PDF
     doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
     doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
     doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
     doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
     
+    // Imagem do FOP
     const imgData = canvas.toDataURL('image/png');
     const imgRatio = w / h;
     let finalW = 180; let finalH = finalW / imgRatio;
@@ -295,6 +311,7 @@ const App: React.FC = () => {
     
     doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
     
+    // Tabela
     const tableData = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
       .sort((a,b) => (a.nr || 0) - (b.nr || 0))
       .map(c => [c.nr?.toString(), `${c.position}`, CAMERA_ASSETS[c.type].label, c.lens || '86x']);
@@ -306,12 +323,13 @@ const App: React.FC = () => {
     doc.save(`${projectTitle}.pdf`);
   };
 
-  // --- RENDER ITEM (Câmara, Texto, Vetor) ---
+  // --- RENDER ITEM ---
   const renderItem = (cam: PlacedCamera) => {
     const isSelected = selectedId === cam.id;
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
+    // 1. TEXTO (Corrigido para não ficar invisível)
     if (isText) {
       return (
         <div 
@@ -341,6 +359,7 @@ const App: React.FC = () => {
       );
     }
 
+    // 2. VETORES (Com Handles estilo PowerPoint)
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -359,25 +378,48 @@ const App: React.FC = () => {
            style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}
         >
           <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
-            {/* Hit Area Grossa para facilitar clique */}
+            {/* Hit Area Grossa (Invisível) */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer' }} />
             {/* Linha Visível */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
             {/* Seta */}
             {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill={isSelected ? "#2196F3" : "#FFF"} transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} style={{ pointerEvents: 'none' }} />}
           </svg>
-          {/* Pontos de Edição */}
+          
+          {/* HANDLES: Pontos de Edição (Estilo PowerPoint) */}
           {isSelected && (
             <>
-              <div className="handle absolute" data-id={cam.id} data-index="1" style={{ left: lx1, top: ly1, transform: 'translate(-50%, -50%)' }} />
-              <div className="handle absolute" data-id={cam.id} data-index="2" style={{ left: lx2, top: ly2, transform: 'translate(-50%, -50%)' }} />
+              {/* Ponto 1 */}
+              <div 
+                className="handle absolute" 
+                data-id={cam.id} 
+                data-index="1" 
+                style={{ 
+                   left: lx1, top: ly1, 
+                   width: '12px', height: '12px', 
+                   backgroundColor: '#FFF', border: '2px solid #2196F3', borderRadius: '50%',
+                   transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' 
+                }} 
+              />
+              {/* Ponto 2 */}
+              <div 
+                className="handle absolute" 
+                data-id={cam.id} 
+                data-index="2" 
+                style={{ 
+                   left: lx2, top: ly2, 
+                   width: '12px', height: '12px', 
+                   backgroundColor: '#FFF', border: '2px solid #2196F3', borderRadius: '50%',
+                   transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' 
+                }} 
+              />
             </>
           )}
         </div>
       );
     }
 
-    // Câmara (Rotação Independente)
+    // 3. CÂMARAS
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
@@ -390,11 +432,9 @@ const App: React.FC = () => {
          }}
       >
         <div className="relative w-full h-full flex items-center justify-center">
-          {/* Ícone Roda */}
           <div style={{ transform: `rotate(${cam.rotation}deg) scaleX(${cam.flipped ? -1 : 1}) scale(${cam.scale})`, transformOrigin: 'center', display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%' }}>
             {CAMERA_ASSETS[cam.type].icon}
           </div>
-          {/* Badge Fixo */}
           {cam.nr && (
             <div className="absolute bg-black border border-white rounded-full flex items-center justify-center text-white font-bold shadow-md z-[20]"
                  style={{ width: '18px', height: '18px', fontSize: '10px', top: '-5px', right: '-5px' }}>
@@ -441,7 +481,7 @@ const App: React.FC = () => {
         {/* ÁREA CENTRAL (CANVAS) */}
         <main className="flex-1 relative bg-[#252526] flex flex-col overflow-hidden">
           <div className="flex-1 overflow-auto bg-[#2D2D2D] canvas-container">
-            {/* CONTAINER COM PADDING 128px (p-32) */}
+            {/* O container tem p-32 (padding de 128px), importante para o offset do PDF */}
             <div 
                ref={captureTargetRef} 
                id="capture-target" 
