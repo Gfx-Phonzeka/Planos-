@@ -255,7 +255,6 @@ const App: React.FC = () => {
       doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
       doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
       
-      // JPEG 0.8 para PDF leve
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
       
       const imgRatio = w / h;
@@ -317,8 +316,8 @@ const App: React.FC = () => {
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
                 color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                // FIX: Subir o texto editável agressivamente para compensar PDF
-                marginTop: '-8px' 
+                // FIX: Subir o texto editável ainda mais (-12px)
+                marginTop: '-12px' 
             }}
           >
             {cam.text}
@@ -384,8 +383,8 @@ const App: React.FC = () => {
               boxSizing: 'border-box'
             }}
           >
-            {/* FIX: Margem negativa agressiva (6px) para centrar no PDF */}
-            <span style={{ marginTop: '-6px', display: 'block' }}>{cam.nr}</span>
+            {/* FIX: Margem negativa agressiva (-9px) para centrar o número no PDF */}
+            <span style={{ marginTop: '-9px', display: 'block' }}>{cam.nr}</span>
           </div>
         )}
       </div>
