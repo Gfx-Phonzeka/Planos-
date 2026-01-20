@@ -2,7 +2,9 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
+    // Usar '.' em vez de process.cwd() evita erros de tipos
     const env = loadEnv(mode, '.', '');
+    
     return {
       server: {
         port: 3000,
