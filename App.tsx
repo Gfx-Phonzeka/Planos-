@@ -29,12 +29,21 @@ const App: React.FC = () => {
 
   // --- HELPERS ---
   const getPointerPos = (e: any) => {
-    const event = e.touches && e.touches.length > 0 ? e.touches[0] : e;
+    // Suporte robusto para Touch (iPad) e Mouse
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
+      x: clientX - rect.left,
+      y: clientY - rect.top
     };
   };
 
@@ -43,8 +52,39 @@ const App: React.FC = () => {
     return 'Field of Play';
   };
 
+  // --- FUNÇÃO PARA ADICIONAR CÂMARA (Funciona com Clique no iPad e Drop no Desktop) ---
+  const addCamera = (type: CameraType, x?: number, y?: number) => {
+    // Se não houver coordenadas (clique na sidebar), coloca no centro do ecrã visível
+    const finalX = x || selectedSport.dimensions.width / 2;
+    const finalY = y || selectedSport.dimensions.height / 2;
+
+    const asset = CAMERA_ASSETS[type];
+    const isVector = [CameraType.ARROW, CameraType.LINE].includes(type);
+    const isText = type === CameraType.TEXT;
+    const count = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type))).length;
+
+    const newCam: PlacedCamera = {
+      id: Math.random().toString(36).substring(2, 11),
+      nr: (isVector || isText) ? undefined : count + 1,
+      type: type,
+      x: finalX, 
+      y: finalY,
+      x1: isVector ? finalX - 60 : undefined, y1: isVector ? finalY - 30 : undefined,
+      x2: isVector ? finalX + 60 : undefined, y2: isVector ? finalY + 30 : undefined,
+      rotation: 0, scale: 1.0, flipped: false,
+      position: detectZone(finalX, finalY, selectedSport),
+      config: asset.config || 'HD', mount: asset.mount || 'Fixed',
+      lens: (isVector || isText) ? '' : (asset.lens || '86x'),
+      text: isText ? 'EDITAR TEXTO' : undefined
+    };
+
+    setCameras(prev => [...prev, newCam]);
+    setSelectedId(newCam.id);
+  };
+
   // --- HANDLERS ---
   const handleStart = (e: any) => {
+    // Permitir edição de texto sem iniciar arrasto
     if (isEditingText) {
       if (!e.target.closest('.text-editable')) {
         setIsEditingText(false);
@@ -58,20 +98,24 @@ const App: React.FC = () => {
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
+    // Handle (Pontos de Edição)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
-      if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
+      // Importante para iPad: Prevent default para não fazer scroll
+      if (e.cancelable && e.type !== 'mousedown') e.preventDefault(); 
       setActiveHandle({ id: handle.dataset.id!, index: parseInt(handle.dataset.index!) });
       return;
     }
 
+    // Item Arrastável
     const item = target.closest('.draggable-item') as HTMLElement;
     if (item) {
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
+      // iPad: Impede o scroll da página ao tocar num objeto, exceto se for Texto (para permitir focar)
       if (currentCam?.type !== CameraType.TEXT) {
-         if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
+         if (e.cancelable && e.type !== 'mousedown') e.preventDefault();
       }
 
       if (currentCam) {
@@ -86,6 +130,7 @@ const App: React.FC = () => {
         }
       }
     } else {
+      // Clicou no vazio
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
         setIsEditingText(false);
@@ -96,7 +141,9 @@ const App: React.FC = () => {
   const handleMove = useCallback((e: any) => {
     if (isEditingText) return; 
     if (!activeHandle && !draggingIdRef.current) return;
-    if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
+    
+    // CRÍTICO PARA IPAD: Impede que a página "fuja" enquanto arrastas
+    if (e.cancelable) e.preventDefault();
 
     const pos = getPointerPos(e);
 
@@ -149,9 +196,11 @@ const App: React.FC = () => {
     setIsDraggingItem(false);
   }, []);
 
+  // Event Listeners Globais para garantir que o arrasto não "cai" se o dedo sair do elemento
   useEffect(() => {
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleEnd);
+    // Passive: false é obrigatório para o e.preventDefault() funcionar no iOS
     window.addEventListener('touchmove', handleMove, { passive: false });
     window.addEventListener('touchend', handleEnd);
     return () => { 
@@ -162,34 +211,15 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
+  // --- DROP (Desktop) ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
-    const asset = CAMERA_ASSETS[draggedType];
-    const isVector = [CameraType.ARROW, CameraType.LINE].includes(draggedType);
-    const isText = draggedType === CameraType.TEXT;
-    const count = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type))).length;
-
-    const newCam: PlacedCamera = {
-      id: Math.random().toString(36).substring(2, 11),
-      nr: (isVector || isText) ? undefined : count + 1,
-      type: draggedType,
-      x, y,
-      x1: isVector ? x - 60 : undefined, y1: isVector ? y - 30 : undefined,
-      x2: isVector ? x + 60 : undefined, y2: isVector ? y + 30 : undefined,
-      rotation: 0, scale: 1.0, flipped: false,
-      position: detectZone(x, y, selectedSport),
-      config: asset.config || 'HD', mount: asset.mount || 'Fixed',
-      lens: (isVector || isText) ? '' : (asset.lens || '86x'),
-      text: isText ? 'EDITAR TEXTO' : undefined
-    };
-
-    setCameras([...cameras, newCam]);
-    setSelectedId(newCam.id);
+    
+    addCamera(draggedType, x, y);
     setDraggedType(null);
   };
 
@@ -256,7 +286,6 @@ const App: React.FC = () => {
       doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
       
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
-      
       const imgRatio = w / h;
       let finalW = 180; let finalH = finalW / imgRatio;
       
@@ -287,10 +316,11 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
+    // 1. TEXTO (touch-none impede scroll ao arrastar)
     if (isText) {
       return (
         <div 
-          className={`draggable-item absolute flex items-center justify-center pointer-events-none`}
+          className={`draggable-item absolute flex items-center justify-center pointer-events-none touch-none`}
           data-id={cam.id}
           style={{ 
              left: cam.x, top: cam.y, 
@@ -312,12 +342,13 @@ const App: React.FC = () => {
               setIsEditingText(false); 
               updateCameraProp(cam.id, { text: e.currentTarget.innerText }); 
             }}
+            // touch-auto aqui para permitir selecionar texto
             style={{ 
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
                 color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                // FIX: Subir o texto editável ainda mais (-12px)
-                marginTop: '-12px' 
+                marginTop: '-12px',
+                touchAction: 'auto' 
             }}
           >
             {cam.text}
@@ -326,6 +357,7 @@ const App: React.FC = () => {
       );
     }
 
+    // 2. VETORES
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -338,7 +370,8 @@ const App: React.FC = () => {
       const angle = Math.atan2(ly2 - ly1, lx2 - lx1) * 180 / Math.PI;
 
       return (
-        <div className="draggable-item absolute pointer-events-none" data-id={cam.id} style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}>
+        // touch-none vital para o iPad não fazer scroll ao arrastar a linha
+        <div className="draggable-item absolute pointer-events-none touch-none" data-id={cam.id} style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}>
           <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
@@ -354,9 +387,10 @@ const App: React.FC = () => {
       );
     }
 
+    // 3. CÂMARAS
     return (
       <div 
-         className={`draggable-item absolute flex items-center justify-center pointer-events-auto ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
+         className={`draggable-item absolute flex items-center justify-center pointer-events-auto touch-none ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
          data-id={cam.id}
          style={{ 
             left: cam.x, top: cam.y, 
@@ -383,7 +417,6 @@ const App: React.FC = () => {
               boxSizing: 'border-box'
             }}
           >
-            {/* FIX: Margem negativa agressiva (-9px) para centrar o número no PDF */}
             <span style={{ marginTop: '-9px', display: 'block' }}>{cam.nr}</span>
           </div>
         )}
@@ -392,7 +425,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#1E1E1E] text-white" onMouseDown={handleStart} onTouchStart={handleStart}>
+    // 'touch-none' na raiz previne scroll elástico no iPad
+    <div className="flex flex-col h-screen overflow-hidden bg-[#1E1E1E] text-white touch-none" onMouseDown={handleStart} onTouchStart={handleStart}>
       <header className="h-16 bg-[#121212] border-b border-white/5 flex items-center justify-between px-6 z-30 shrink-0 shadow-lg">
         <div className="flex items-center gap-8">
           <div className="flex flex-col">
@@ -455,7 +489,14 @@ const App: React.FC = () => {
             <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit de Assets</h3>
             <div className="grid grid-cols-3 gap-3">
               {Object.keys(CAMERA_ASSETS).map(type => (
-                <div key={type} draggable onDragStart={() => setDraggedType(type as CameraType)} className="bg-[#222] p-2 rounded flex flex-col items-center hover:bg-[#333] transition cursor-grab border border-transparent shadow-sm group">
+                <div 
+                  key={type} 
+                  draggable 
+                  onDragStart={() => setDraggedType(type as CameraType)} 
+                  // IPAD: Adiciona onClick para permitir adicionar sem arrastar
+                  onClick={() => addCamera(type as CameraType)}
+                  className="bg-[#222] p-2 rounded flex flex-col items-center hover:bg-[#333] transition cursor-grab active:cursor-grabbing border border-transparent shadow-sm group"
+                >
                   <div className="w-8 h-8 mb-1 group-hover:scale-90 transition-transform">{CAMERA_ASSETS[type as CameraType].icon}</div>
                   <span className="text-[8px] font-bold uppercase text-gray-500 text-center leading-none group-hover:text-gray-300 transition-colors">{CAMERA_ASSETS[type as CameraType].label}</span>
                 </div>
