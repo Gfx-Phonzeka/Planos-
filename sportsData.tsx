@@ -1,4 +1,3 @@
-// sportsData.tsx
 export const getSportSVG = (sport: string): string => {
   const W = 3000, H = 2000, CX = W/2, CY = H/2;
   const stroke = 'stroke="white" stroke-width="4" fill="none"';
@@ -16,8 +15,8 @@ export const getSportSVG = (sport: string): string => {
       content += `<rect x="${CX-fw/2}" y="${CY-fh/2}" width="${fw}" height="${fh}" ${stroke}/>`;
       content += `<line x1="${CX}" y1="${CY-fh/2}" x2="${CX}" y2="${CY+fh/2}" ${stroke}/>`;
       content += `<circle cx="${CX}" cy="${CY}" r="150" ${stroke}/>`;
-      content += `<rect x="${CX-fw/2}" y="${CY-250}" width="200" height="500" ${stroke}/>`; // Area Esq
-      content += `<rect x="${CX+fw/2-200}" y="${CY-250}" width="200" height="500" ${stroke}/>`; // Area Dir
+      content += `<rect x="${CX-fw/2}" y="${CY-250}" width="200" height="500" ${stroke}/>`;
+      content += `<rect x="${CX+fw/2-200}" y="${CY-250}" width="200" height="500" ${stroke}/>`;
   }
   else if (sport === 'BASQUETEBOL') {
       const bw = 1200, bh = 700;
@@ -33,18 +32,18 @@ export const getSportSVG = (sport: string): string => {
        const rw = 1600, rh = 900;
        content += `<rect x="${CX-rw/2}" y="${CY-rh/2}" width="${rw}" height="${rh}" ${stroke}/>`;
        content += `<line x1="${CX}" y1="${CY-rh/2}" x2="${CX}" y2="${CY+rh/2}" ${stroke}/>`;
-       content += `<path d="M ${CX-rw/2} ${CY-50} v100 M ${CX-rw/2} ${CY-50} h-20 M ${CX-rw/2} ${CY+50} h-20" ${stroke}/>`; // H Post
+       content += `<path d="M ${CX-rw/2} ${CY-50} v100 M ${CX-rw/2} ${CY-50} h-20 M ${CX-rw/2} ${CY+50} h-20" ${stroke}/>`;
        content += `<path d="M ${CX+rw/2} ${CY-50} v100 M ${CX+rw/2} ${CY-50} h20 M ${CX+rw/2} ${CY+50} h20" ${stroke}/>`;
   }
   else if (sport === 'TÊNIS') {
       const tw = 800, th = 1400;
       content += `<rect x="${CX-tw/2}" y="${CY-th/2}" width="${tw}" height="${th}" ${stroke} fill="#4E6E5D"/>`;
-      content += `<line x1="${CX-tw/2-100}" y1="${CY}" x2="${CX+tw/2+100}" y2="${CY}" ${stroke}/>`; // Rede
+      content += `<line x1="${CX-tw/2-100}" y1="${CY}" x2="${CX+tw/2+100}" y2="${CY}" ${stroke}/>`;
       content += `<line x1="${CX}" y1="${CY-th/2}" x2="${CX}" y2="${CY-th/2+300}" ${stroke}/>`;
       content += `<line x1="${CX}" y1="${CY+th/2}" x2="${CX}" y2="${CY+th/2-300}" ${stroke}/>`;
   }
-  // Padrão genérico para os outros
   else {
+       // Campo genérico
        content += `<rect x="${CX-700}" y="${CY-400}" width="1400" height="800" ${stroke}/>`;
        content += `<line x1="${CX}" y1="${CY-400}" x2="${CX}" y2="${CY+400}" ${stroke}/>`;
        content += `<circle cx="${CX}" cy="${CY}" r="80" ${stroke}/>`;
