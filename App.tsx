@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import autoTable from 'jspdf-autotable'; // Certifica-te que tens: npm install jspdf-autotable
-
+import autoTable from 'jspdf-autotable';
 import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
@@ -47,15 +46,25 @@ const App: React.FC = () => {
     return 'Field of Play';
   };
 
-  // --- LÓGICA DE INÍCIO DE ARRASTO (HandleStart) ---
+  // --- HANDLERS ---
   const handleStart = (e: any) => {
-    // Ignora cliques na UI
-    if (e.target.closest('button') || e.target.closest('input') || (isEditingText && e.target.closest('.text-annotation'))) return;
+    // 1. SE ESTIVER A EDITAR TEXTO, IMPEDIR ARRASTO E PERMITIR FOCO
+    if (isEditingText) {
+      // Se clicarmos fora do texto enquanto editamos, paramos a edição
+      if (!e.target.closest('.text-editable')) {
+        setIsEditingText(false);
+      } else {
+        // Se clicarmos no texto, permitimos a propagação para que o cursor funcione
+        return; 
+      }
+    }
+
+    if (e.target.closest('button') || e.target.closest('input')) return;
     
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 1. DETETAR HANDLE (Pontos de Edição)
+    // 2. DETETAR HANDLE (Pontos de Vetor)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -63,10 +72,12 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. DETETAR ITEM ARRÁSTAVEL
+    // 3. DETETAR ITEM ARRÁSTAVEL
     const item = target.closest('.draggable-item') as HTMLElement;
     
     if (item) {
+      // Importante: Não fazer preventDefault imediatamente em textos para permitir doubleClick, 
+      // mas aqui estamos a tratar do Drag start.
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       
       const id = item.dataset.id!;
@@ -74,6 +85,9 @@ const App: React.FC = () => {
       
       if (currentCam) {
         setSelectedId(id);
+        
+        // Se for texto, não inicia drag imediatamente se já estiver selecionado (facilita dblclick)
+        // Mas se for arrasto, queremos arrastar.
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
@@ -93,7 +107,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- LÓGICA DE MOVIMENTO (HandleMove) ---
   const handleMove = useCallback((e: any) => {
     if (isEditingText || !canvasRef.current) return;
     if (!activeHandle && !draggingIdRef.current) return;
@@ -216,19 +229,22 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- EXPORTAR PDF (IMPORT FIXO & ROBUSTO) ---
+  // --- EXPORTAR PDF (LÓGICA CORRIGIDA: CAMPO COMPLETO) ---
   const exportPDF = async () => {
     try {
       const target = captureTargetRef.current;
-      if (!target) {
-        console.error("Alvo de captura não encontrado");
-        return;
-      }
+      if (!target) return;
       
-      console.log("A iniciar exportação...");
+      console.log("Gerando PDF...");
 
-      // 1. Calcular Limites
-      let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
+      // 1. INICIAR COM OS LIMITES TOTAIS DO CAMPO
+      // Isto garante que o campo aparece SEMPRE na totalidade, mesmo sem câmaras
+      let minX = 0;
+      let minY = 0;
+      let maxX = selectedSport.dimensions.width;
+      let maxY = selectedSport.dimensions.height;
+
+      // 2. EXPANDIR SE HOUVER CÂMARAS FORA DO CAMPO (Tribuna)
       if(cameras.length > 0) {
           cameras.forEach(cam => {
           if (cam.x1 !== undefined) {
@@ -241,31 +257,33 @@ const App: React.FC = () => {
           });
       }
 
+      // 3. ADICIONAR MARGEM DE SEGURANÇA
       const padding = 100;
       minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-      minX = Math.max(0, minX); minY = Math.max(0, minY);
-      maxX = Math.max(selectedSport.dimensions.width + padding, maxX);
-      maxY = Math.max(selectedSport.dimensions.height + padding, maxY);
+      
+      // O minX pode ser negativo se houver câmaras na esquerda, isso é ok.
+      // O maxX deve ser pelo menos a largura do campo.
 
       const w = maxX - minX;
       const h = maxY - minY;
       
-      // Compensar Padding do Container
+      // 4. COMPENSAR PADDING DO WRAPPER (p-32 = 128px)
+      // O html2canvas captura o 'target', o conteúdo começa em (128,128)
       const wrapperOffset = 128;
       const captureX = minX + wrapperOffset;
       const captureY = minY + wrapperOffset;
 
-      // 2. HTML2Canvas
+      // 5. CAPTURAR COM windowWidth/Height (Evita cortes)
       const canvas = await html2canvas(target, { 
         scale: 2, 
         x: captureX, y: captureY, width: w, height: h,
         backgroundColor: '#2D2D2D', 
         useCORS: true,
-        windowWidth: target.scrollWidth + 500,
-        windowHeight: target.scrollHeight + 500
+        windowWidth: target.scrollWidth + 1000, // Margem grande para garantir
+        windowHeight: target.scrollHeight + 1000
       });
       
-      // 3. JsPDF
+      // 6. GERAR PDF
       const doc = new jsPDF('l', 'mm', 'a4');
       doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
       doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
@@ -275,10 +293,12 @@ const App: React.FC = () => {
       const imgData = canvas.toDataURL('image/png');
       const imgRatio = w / h;
       let finalW = 180; let finalH = finalW / imgRatio;
+      
+      // Ajustar se for demasiado alto
       if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
+      
       doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
       
-      // 4. AutoTable
       const tableData = cameras
         .filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
         .sort((a,b) => (a.nr || 0) - (b.nr || 0))
@@ -290,11 +310,10 @@ const App: React.FC = () => {
       });
 
       doc.save(`${projectTitle}.pdf`);
-      console.log("PDF Gerado com sucesso!");
-
-    } catch (error) {
-      console.error("Erro ao gerar PDF:", error);
-      alert("Ocorreu um erro ao gerar o PDF. Verifica a consola para mais detalhes.");
+      
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao exportar PDF.");
     }
   };
 
@@ -304,7 +323,7 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO
+    // 1. TEXTO (Com select-text e lógica de foco melhorada)
     if (isText) {
       return (
         <div 
@@ -315,20 +334,26 @@ const App: React.FC = () => {
              width: 200, height: 40,
              transform: 'translate(-50%, -50%)',
              zIndex: isSelected ? 100 : 20,
-             cursor: 'move'
+             cursor: isEditingText ? 'text' : 'move'
           }}
         >
           <div 
-            className="text-annotation w-full text-center outline-none"
+            className="text-editable w-full text-center outline-none select-text" // ADICIONADO select-text
             contentEditable={isSelected && isEditingText}
             suppressContentEditableWarning
-            onDoubleClick={() => setIsEditingText(true)}
-            onBlur={(e) => { setIsEditingText(false); updateCameraProp(cam.id, { text: e.currentTarget.innerText }); }}
+            onDoubleClick={(e) => {
+              e.stopPropagation(); // Impede arrasto ao fazer double click
+              setIsEditingText(true);
+            }}
+            onBlur={(e) => { 
+              setIsEditingText(false); 
+              updateCameraProp(cam.id, { text: e.currentTarget.innerText }); 
+            }}
             style={{ 
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
                 color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                cursor: isEditingText ? 'text' : 'move'
+                cursor: 'text'
             }}
           >
             {cam.text}
