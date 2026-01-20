@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export enum CameraType {
@@ -15,29 +14,29 @@ export enum CameraType {
   UNDERWATER = 'UNDERWATER',
   BODYCAM = 'BODYCAM',
   TRACKCAM = 'TRACKCAM',
-  // Annotations
   TEXT = 'TEXT',
   ARROW = 'ARROW',
   LINE = 'LINE'
 }
 
 export interface PlacedCamera {
-  id: string;
+  id: string; // CORREÇÃO: ID agora é sempre string
   nr?: number;
+  displayId?: string | number | null;
   type: CameraType;
   x: number;
   y: number;
-  x1?: number;
+  x1?: number; // Para vetores
   y1?: number;
   x2?: number;
   y2?: number;
   rotation: number;
   scale: number;
   flipped?: boolean;
-  position: string;
-  config: string;
-  mount: string;
-  lens: string;
+  position?: string;
+  lens?: string;
+  config?: string;
+  mount?: string;
   text?: string;
 }
 
