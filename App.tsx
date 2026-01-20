@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
@@ -13,14 +14,25 @@ const App: React.FC = () => {
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
-  
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
 
   const canvasRef = useRef<SVGSVGElement>(null);
   const captureTargetRef = useRef<HTMLDivElement>(null);
   const draggingIdRef = useRef<string | null>(null);
 
+  // Derive the active camera object from selectedId
   const activeCamera = cameras.find(c => c.id === selectedId);
+
+  // Function to remove a camera from the state
+  const removeCamera = (id: string) => {
+    setCameras(prev => prev.filter(c => c.id !== id));
+    setSelectedId(null);
+  };
+
+  // Function to update properties of a specific camera
+  const updateCameraProp = (id: string, props: Partial<PlacedCamera>) => {
+    setCameras(prev => prev.map(c => c.id === id ? { ...c, ...props } : c));
+  };
 
   const getPointerPos = (e: any) => {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -28,424 +40,159 @@ const App: React.FC = () => {
     return { clientX, clientY };
   };
 
-  const detectZone = (x: number, y: number, sport: Sport) => {
-    if (x < 0 || x > sport.dimensions.width || y < 0 || y > sport.dimensions.height) return 'Tribuna / Plataforma';
-    return 'Field of Play';
-  };
-
   const handleStart = (e: any) => {
     if (isEditingText) return;
-    if (e.type === 'touchstart' && !e.target.closest('.handle') && !e.target.closest('.camera-item')) {
-        // Allow scrolling if not hitting items
-        return;
-    }
-    
     const target = e.target as HTMLElement;
     const handle = target.closest('.handle') as HTMLElement;
     const item = target.closest('.camera-item') as HTMLElement;
     
     if (handle) {
       if (e.type === 'touchstart') e.preventDefault();
-      const id = handle.dataset.id!;
-      const index = parseInt(handle.dataset.index!);
-      setActiveHandle({ id, index });
+      setActiveHandle({ id: handle.dataset.id!, index: parseInt(handle.dataset.index!) });
       return;
     }
-
     if (item) {
       if (e.type === 'touchstart') e.preventDefault();
-      e.stopPropagation();
       const id = item.dataset.id!;
-      const cam = cameras.find(c => c.id === id);
-      if (cam) {
-        setSelectedId(id);
-        draggingIdRef.current = id;
-      }
+      setSelectedId(id);
+      draggingIdRef.current = id;
     } else {
       setSelectedId(null);
     }
   };
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    const item = target.closest('.camera-item') as HTMLElement;
-    if (item && item.dataset.type === CameraType.TEXT) {
-      setIsEditingText(true);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (!draggedType || !canvasRef.current) return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const asset = CAMERA_ASSETS[draggedType];
-    const isVector = [CameraType.ARROW, CameraType.LINE].includes(draggedType);
-    const isText = draggedType === CameraType.TEXT;
-    const cameraCount = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type))).length;
-
-    const newCam: PlacedCamera = {
-      id: Math.random().toString(36).substr(2, 9),
-      nr: (isVector || isText) ? undefined : cameraCount + 1,
-      type: draggedType,
-      x,
-      y,
-      x1: isVector ? x - 60 : undefined,
-      y1: isVector ? y - 30 : undefined,
-      x2: isVector ? x + 60 : undefined,
-      y2: isVector ? y + 30 : undefined,
-      rotation: 0,
-      scale: 1.0,
-      flipped: false,
-      position: detectZone(x, y, selectedSport),
-      config: asset.config,
-      mount: asset.mount,
-      lens: (isVector || isText) ? '' : (asset.lens || '86x'),
-      text: isText ? 'EDITAR TEXTO' : undefined
-    };
-
-    setCameras([...cameras, newCam]);
-    setSelectedId(newCam.id);
-    setDraggedType(null);
-  };
-
-  const onMove = useCallback((e: any) => {
-    if (isEditingText || !canvasRef.current) return;
+  const handleMove = useCallback((e: any) => {
+    if (!canvasRef.current || isEditingText) return;
     const { clientX, clientY } = getPointerPos(e);
     const rect = canvasRef.current.getBoundingClientRect();
     const curX = clientX - rect.left;
     const curY = clientY - rect.top;
 
-    if (activeHandle || draggingIdRef.current) {
-        if (e.cancelable) e.preventDefault();
-    }
+    if (activeHandle || draggingIdRef.current) e.preventDefault();
 
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
-          const updates: any = {};
-          if (activeHandle.index === 1) {
-            updates.x1 = curX; updates.y1 = curY;
-            updates.x = (curX + (c.x2 || 0)) / 2;
-            updates.y = (curY + (c.y2 || 0)) / 2;
-          } else {
-            updates.x2 = curX; updates.y2 = curY;
-            updates.x = ((c.x1 || 0) + curX) / 2;
-            updates.y = ((c.y1 || 0) + curY) / 2;
-          }
-          return { ...c, ...updates };
+          if (activeHandle.index === 1) return { ...c, x1: curX, y1: curY, x: (curX + (c.x2 || 0)) / 2, y: (curY + (c.y2 || 0)) / 2 };
+          return { ...c, x2: curX, y2: curY, x: ((c.x1 || 0) + curX) / 2, y: ((c.y1 || 0) + curY) / 2 };
         }
         return c;
       }));
-      return;
-    }
-
-    if (draggingIdRef.current) {
+    } else if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
-          const dx = curX - c.x;
-          const dy = curY - c.y;
-          const updates: any = { x: curX, y: curY, position: detectZone(curX, curY, selectedSport) };
-          if (c.x1 !== undefined) {
-            updates.x1 = c.x1 + dx; updates.y1 = c.y1 + dy;
-            updates.x2 = c.x2! + dx; updates.y2 = c.y2! + dy;
-          }
-          return { ...c, ...updates };
+          const dx = curX - c.x, dy = curY - c.y;
+          const pos = (curX < 0 || curX > selectedSport.dimensions.width || curY < 0 || curY > selectedSport.dimensions.height) ? 'Tribuna' : 'Field';
+          return { ...c, x: curX, y: curY, position: pos, x1: c.x1 !== undefined ? c.x1 + dx : undefined, y1: c.y1 !== undefined ? c.y1 + dy : undefined, x2: c.x2 !== undefined ? c.x2 + dx : undefined, y2: c.y2 !== undefined ? c.y2 + dy : undefined };
         }
         return c;
       }));
     }
   }, [selectedSport, isEditingText, activeHandle]);
 
-  const onEnd = useCallback(() => { 
-    draggingIdRef.current = null; 
-    setActiveHandle(null);
-  }, []);
+  const handleEnd = useCallback(() => { draggingIdRef.current = null; setActiveHandle(null); }, []);
 
   useEffect(() => {
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onEnd);
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onEnd);
-    return () => { 
-      window.removeEventListener('mousemove', onMove); 
-      window.removeEventListener('mouseup', onEnd); 
-      window.removeEventListener('touchmove', onMove); 
-      window.removeEventListener('touchend', onEnd); 
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
     };
-  }, [onMove, onEnd]);
+  }, [handleMove, handleEnd]);
 
-  const removeCamera = (id: string) => {
-    setCameras(prev => {
-      const filtered = prev.filter(c => c.id !== id);
-      let camCount = 0;
-      return filtered.map(c => {
-        if ([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)) return c;
-        camCount++;
-        return { ...c, nr: camCount };
-      });
-    });
-    setSelectedId(null);
-  };
-
-  const updateCameraProp = (id: string, updates: Partial<PlacedCamera>) => {
-    setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-  };
-
-  const getSmartBounds = () => {
-    if (!canvasRef.current) return { x: 0, y: 0, w: 2000, h: 1600 };
-    let minX = 0; let minY = 0;
-    let maxX = selectedSport.dimensions.width;
-    let maxY = selectedSport.dimensions.height;
-
-    cameras.forEach(cam => {
-      if (cam.x1 !== undefined && cam.x2 !== undefined) {
-        minX = Math.min(minX, cam.x1, cam.x2);
-        minY = Math.min(minY, cam.y1!, cam.y2!);
-        maxX = Math.max(maxX, cam.x1, cam.x2);
-        maxY = Math.max(maxY, cam.y1!, cam.y2!);
-      } else {
-        minX = Math.min(minX, cam.x - 50);
-        minY = Math.min(minY, cam.y - 50);
-        maxX = Math.max(maxX, cam.x + 50);
-        maxY = Math.max(maxY, cam.y + 50);
-      }
-    });
-
-    const padding = 100;
-    const canvasOffset = 128; // p-32 padding in UI
-    return {
-      x: minX - padding + canvasOffset,
-      y: minY - padding + canvasOffset,
-      w: (maxX - minX) + (padding * 2),
-      h: (maxY - minY) + (padding * 2)
+  const onDrop = (e: any) => {
+    e.preventDefault();
+    if (!draggedType || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const isV = [CameraType.ARROW, CameraType.LINE].includes(draggedType);
+    const count = cameras.filter(c => ![CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)).length;
+    const cam: PlacedCamera = {
+      id: Math.random().toString(36).substr(2, 9), nr: isV || draggedType === CameraType.TEXT ? undefined : count + 1,
+      type: draggedType, x, y, x1: isV ? x - 40 : undefined, y1: isV ? y - 20 : undefined, x2: isV ? x + 40 : undefined, y2: isV ? y + 20 : undefined,
+      rotation: 0, scale: 1, position: 'Field', config: '', mount: '', lens: '86x', text: draggedType === CameraType.TEXT ? 'EDIT' : undefined
     };
+    setCameras([...cameras, cam]);
+    setSelectedId(cam.id);
   };
 
   const exportPDF = async () => {
     const { jsPDF } = (window as any).jspdf;
-    const target = captureTargetRef.current;
-    if (!target) return;
-
-    const bounds = getSmartBounds();
-    const canvas = await (window as any).html2canvas(target, { 
-      scale: 2, scrollX: 0, scrollY: 0, x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h,
-      backgroundColor: '#2D2D2D', useCORS: true, logging: false
+    let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
+    cameras.forEach(c => {
+      if (c.x1 !== undefined) { minX = Math.min(minX, c.x1, c.x2!); maxX = Math.max(maxX, c.x1, c.x2!); minY = Math.min(minY, c.y1!, c.y2!); maxY = Math.max(maxY, c.y1!, c.y2!); }
+      else { minX = Math.min(minX, c.x - 40); maxX = Math.max(maxX, c.x + 40); minY = Math.min(minY, c.y - 40); maxY = Math.max(maxY, c.y + 40); }
     });
-
+    const canvas = await (window as any).html2canvas(captureTargetRef.current, { scale: 2, x: minX + 128 - 50, y: minY + 128 - 50, width: (maxX - minX) + 100, height: (maxY - minY) + 100, useCORS: true });
     const doc = new jsPDF('l', 'mm', 'a4');
-    doc.setFillColor(30, 30, 30);
-    doc.rect(0, 0, 297, 25, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(18); doc.setFont("helvetica", "bold");
-    doc.text(projectTitle.toUpperCase(), 10, 11);
-    doc.setFontSize(10); doc.setFont("helvetica", "normal");
-    doc.text(`${location} | ${time}`, 10, 19);
-    doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
-
-    const imgData = canvas.toDataURL('image/png');
-    const imgRatio = canvas.width / canvas.height;
-    let finalW = 180; let finalH = finalW / imgRatio;
-    if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
-    doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
-
-    const tableData = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
-      .sort((a,b) => (a.nr || 0) - (b.nr || 0))
-      .map(c => [c.nr?.toString(), `${c.position}`, CAMERA_ASSETS[c.type].label, c.lens || '86x']);
-
-    (doc as any).autoTable({
-      head: [['NR', 'POSIÇÃO', 'EQUIPAMENTO', 'ÓTICA']],
-      body: tableData, startY: 32, margin: { left: 200 },
-      styles: { fontSize: 6.5, cellPadding: 1.5 },
-      headStyles: { fillColor: [255, 87, 34], textColor: 255 },
-      theme: 'grid'
-    });
-
-    doc.save(`${projectTitle}_CAMERA_PLAN.pdf`);
-  };
-
-  const renderItem = (cam: PlacedCamera) => {
-    const isText = cam.type === CameraType.TEXT;
-    const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
-
-    if (isText) {
-      return (
-        <div 
-          className={`text-annotation ${isEditingText && selectedId === cam.id ? 'pointer-events-auto cursor-text' : 'pointer-events-none'}`}
-          contentEditable={isEditingText && selectedId === cam.id}
-          onBlur={(e) => { setIsEditingText(false); updateCameraProp(cam.id, { text: e.currentTarget.innerText }); }}
-          suppressContentEditableWarning
-          style={{ fontSize: `${14 * cam.scale}px`, transform: `rotate(${cam.rotation}deg)` }}
-        >
-          {cam.text}
-        </div>
-      );
-    }
-
-    if (isVector) {
-      const vMinX = Math.min(cam.x1!, cam.x2!);
-      const vMinY = Math.min(cam.y1!, cam.y2!);
-      const vW = Math.max(Math.abs(cam.x2! - cam.x1!), 1);
-      const vH = Math.max(Math.abs(cam.y2! - cam.y1!), 1);
-      const lx1 = cam.x1! === vMinX ? 0 : vW;
-      const ly1 = cam.y1! === vMinY ? 0 : vH;
-      const lx2 = cam.x2! === vMinX ? 0 : vW;
-      const ly2 = cam.y2! === vMinY ? 0 : vH;
-      const angle = Math.atan2(ly2 - ly1, lx2 - lx1) * 180 / Math.PI;
-
-      return (
-        <div className="vector-item absolute pointer-events-none" style={{ left: vMinX, top: vMinY, width: vW, height: vH }}>
-          <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
-            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ pointerEvents: 'auto', cursor: 'pointer' }} />
-            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="#FFF" strokeWidth="2" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} />
-            {cam.type === CameraType.ARROW && (
-              <path d="M0,0 L-14,7 L-14,-7 Z" fill="#FFF" transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} />
-            )}
-          </svg>
-          {selectedId === cam.id && (
-            <>
-              <div className="handle absolute z-[110]" data-id={cam.id} data-index="1" style={{ left: lx1, top: ly1, transform: 'translate(-50%, -50%)' }} />
-              <div className="handle absolute z-[110]" data-id={cam.id} data-index="2" style={{ left: lx2, top: ly2, transform: 'translate(-50%, -50%)' }} />
-            </>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="relative" style={{ transform: `rotate(${cam.rotation}deg)` }}>
-        <div style={{ transform: `scaleX(${cam.flipped ? -1 : 1}) scale(${cam.scale})`, transformOrigin: 'center' }}>
-          {CAMERA_ASSETS[cam.type].icon}
-        </div>
-        <div className="absolute bg-black border border-white rounded-full w-[18px] h-[18px] -top-2 -right-2 flex items-center justify-center text-[10px] font-bold text-white shadow-md z-[20]">
-          {cam.nr}
-        </div>
-      </div>
-    );
+    doc.setFillColor(30,30,30); doc.rect(0,0,297,25,'F');
+    doc.setTextColor(255); doc.setFontSize(16); doc.text(projectTitle, 10, 11);
+    doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 32, 180, 180 / (canvas.width / canvas.height));
+    const data = cameras.filter(c => ![CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)).sort((a,b) => (a.nr||0) - (b.nr||0)).map(c => [c.nr, c.position, CAMERA_ASSETS[c.type].label, c.lens]);
+    (doc as any).autoTable({ head: [['NR', 'POS', 'EQUIP', 'LENS']], body: data, startY: 32, margin: { left: 200 }, theme: 'grid', styles: { fontSize: 7 } });
+    doc.save(`${projectTitle}.pdf`);
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden select-none bg-[#1E1E1E] w-screen" onMouseDown={handleStart} onTouchStart={handleStart}>
-      <header className="h-16 bg-[#121212] border-b border-white/5 flex items-center justify-between px-6 z-30 shrink-0 shadow-lg">
-        <div className="flex items-center gap-8">
-          <div className="flex flex-col">
-            <span className="text-sm font-black text-[#FF5722] tracking-tighter leading-none">ML PLANS</span>
-            <span className="text-[8px] text-gray-600 font-bold uppercase">Broadcast Production</span>
-          </div>
-          <div className="flex gap-4">
-            <input className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-[11px] w-48 outline-none focus:border-[#FF5722] text-white uppercase" value={projectTitle} onChange={e => setProjectTitle(e.target.value)} />
-            <div className="flex gap-2">
-              <input className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-[11px] w-36 outline-none text-gray-300" value={location} onChange={e => setLocation(e.target.value)} />
-              <input className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-[11px] w-16 outline-none text-gray-300" value={time} onChange={e => setTime(e.target.value)} />
-            </div>
-          </div>
+    <div className="flex flex-col h-screen w-screen overflow-hidden" onMouseDown={handleStart} onTouchStart={handleStart}>
+      <header className="h-16 bg-[#121212] flex items-center justify-between px-6 shrink-0 border-b border-white/5">
+        <div className="flex items-center gap-6">
+          <div className="font-black text-[#FF5722] text-xl">ML PLANS</div>
+          <input className="bg-white/5 border border-white/10 rounded px-2 text-xs h-8 w-48 text-white" value={projectTitle} onChange={e => setProjectTitle(e.target.value)}/>
         </div>
-        <div className="flex gap-4">
-           <button onClick={() => confirm("Apagar tudo?") && setCameras([])} className="text-[9px] font-bold uppercase text-gray-500 hover:text-white transition">Reset</button>
-           <button onClick={exportPDF} className="bg-[#FF5722] text-white px-8 py-2.5 rounded font-black text-[10px] hover:brightness-110 shadow-xl transition-all uppercase">Gerar PDF</button>
-        </div>
+        <button onClick={exportPDF} className="bg-[#FF5722] text-white px-6 py-2 rounded font-bold text-xs">PDF EXPORT</button>
       </header>
-
-      <div className="flex flex-1 overflow-hidden w-full">
-        <aside className="w-[280px] bg-[#1E1E1E] border-r border-white/5 overflow-y-auto shrink-0 z-10">
-          <div className="p-4 text-[8px] font-bold text-gray-600 uppercase tracking-widest border-b border-white/5">Disciplinas</div>
-          {SPORTS_DATABASE.map(sport => (
-            <button key={sport.id} onClick={() => { setSelectedSport(sport); setCameras([]); setSelectedId(null); }} className={`w-full text-left px-5 py-3.5 text-[10px] font-medium transition-all border-b border-white/5 ${selectedSport.id === sport.id ? 'border-l-4 border-[#FF5722] text-white bg-white/5' : 'text-gray-500 hover:text-gray-200'}`}>{sport.name}</button>
-          ))}
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-64 bg-[#1E1E1E] border-r border-white/5 overflow-y-auto">
+          {SPORTS_DATABASE.map(s => <button key={s.id} onClick={() => { setSelectedSport(s); setCameras([]); }} className={`w-full text-left p-4 text-xs font-bold border-b border-white/5 ${selectedSport.id === s.id ? 'bg-white/5 text-[#FF5722]' : 'text-gray-500'}`}>{s.name}</button>)}
         </aside>
-
-        <main className="flex-1 relative bg-[#252526] flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-auto bg-[#2D2D2D] canvas-container">
-            <div ref={captureTargetRef} id="capture-target" className="relative p-32 inline-block" style={{ width: Math.max(selectedSport.dimensions.width + 600, 2000), height: Math.max(selectedSport.dimensions.height + 600, 1600) }} onDragOver={e => e.preventDefault()} onDrop={handleDrop} onDoubleClick={handleDoubleClick}>
-              <svg ref={canvasRef} width={selectedSport.dimensions.width} height={selectedSport.dimensions.height} className="bg-[#121212] shadow-2xl rounded-sm pointer-events-none ring-1 ring-white/10 fop-svg">
-                {selectedSport.render()}
-              </svg>
-              <div className="absolute inset-0 pointer-events-none p-32">
-                <div className="relative w-full h-full">
-                  {cameras.map(cam => {
-                    const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
-                    return (
-                      <div key={cam.id} data-id={cam.id} data-type={cam.type} className={`camera-item absolute pointer-events-auto flex items-center justify-center ${selectedId === cam.id ? 'selected-cam' : ''}`} style={isVector ? {} : { left: cam.x, top: cam.y, transform: 'translate(-50%, -50%)', zIndex: selectedId === cam.id ? 100 : 10 }}>
-                        {renderItem(cam)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+        <main className="flex-1 canvas-container overflow-auto p-32" ref={captureTargetRef}>
+          <div className="relative inline-block" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
+            <svg ref={canvasRef} width={selectedSport.dimensions.width} height={selectedSport.dimensions.height} className="fop-svg bg-[#121212]">{selectedSport.render()}</svg>
+            <div className="absolute inset-0 pointer-events-none">
+              {cameras.map(c => {
+                const isV = [CameraType.ARROW, CameraType.LINE].includes(c.type);
+                if (isV) {
+                  const mx = Math.min(c.x1!, c.x2!), my = Math.min(c.y1!, c.y2!), w = Math.max(Math.abs(c.x2!-c.x1!), 1), h = Math.max(Math.abs(c.y2!-c.y1!), 1);
+                  const lx1 = c.x1! === mx ? 0 : w, ly1 = c.y1! === my ? 0 : h, lx2 = c.x2! === mx ? 0 : w, ly2 = c.y2! === my ? 0 : h, ang = Math.atan2(ly2-ly1, lx2-lx1)*180/Math.PI;
+                  return <div key={c.id} data-id={c.id} className="camera-item pointer-events-auto" style={{ left: mx, top: my, width: w, height: h }}>
+                    <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible' }}>
+                      <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="#FFF" strokeWidth="2" strokeDasharray={c.type===CameraType.ARROW?"5,5":"0"}/>
+                      {c.type===CameraType.ARROW && <path d="M0,0L-12,6L-12,-6z" fill="#FFF" transform={`translate(${lx2},${ly2}) rotate(${ang})`}/>}
+                    </svg>
+                    {selectedId === c.id && <><div className="handle absolute" data-id={c.id} data-index="1" style={{ left: lx1, top: ly1, transform: 'translate(-50%,-50%)' }}/><div className="handle absolute" data-id={c.id} data-index="2" style={{ left: lx2, top: ly2, transform: 'translate(-50%,-50%)' }}/></>}
+                  </div>;
+                }
+                return <div key={c.id} data-id={c.id} className={`camera-item pointer-events-auto ${selectedId === c.id ? 'selected-cam' : ''}`} style={{ left: c.x, top: c.y, transform: 'translate(-50%,-50%)' }}>
+                  <div style={{ transform: `rotate(${c.rotation}deg) scaleX(${c.flipped?-1:1}) scale(${c.scale})` }}>{CAMERA_ASSETS[c.type].icon}</div>
+                  {c.nr && <div className="absolute -top-2 -right-2 bg-black border border-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{c.nr}</div>}
+                </div>;
+              })}
             </div>
           </div>
-          <footer className="h-40 bg-[#121212] border-t border-white/5 overflow-y-auto shrink-0 z-10">
-            <table className="w-full text-left text-[9px]">
-              <thead className="sticky top-0 bg-[#121212] text-gray-600 uppercase font-black border-b border-white/5">
-                <tr><th className="px-6 py-3 w-16">ID</th><th className="px-4 py-3">Posição</th><th className="px-4 py-3">Equipamento</th><th className="px-4 py-3">Ótica</th></tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type))).sort((a,b) => (a.nr || 0) - (b.nr || 0)).map(cam => (
-                  <tr key={cam.id} className={`transition-colors cursor-pointer ${selectedId === cam.id ? 'bg-[#FF5722]/10' : 'hover:bg-white/5'}`} onClick={() => setSelectedId(cam.id)}>
-                    <td className="px-6 py-3 font-black text-[#FF5722]">{cam.nr}</td><td className="px-4 py-3 uppercase text-gray-300 font-bold">{cam.position}</td><td className="px-4 py-3 text-gray-500 italic">{CAMERA_ASSETS[cam.type].label}</td><td className="px-4 py-3 text-gray-400 font-mono">{cam.lens}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </footer>
         </main>
-
-        <aside className="w-[280px] bg-[#1E1E1E] border-l border-white/10 flex flex-col shrink-0 z-10 overflow-y-auto">
-          <div className="p-5 border-b border-white/10">
-            <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit de Assets</h3>
-            <div className="grid grid-cols-3 gap-3">
-              {Object.keys(CAMERA_ASSETS).map(type => (
-                <div key={type} draggable onDragStart={() => setDraggedType(type as CameraType)} className="bg-[#222] p-2 rounded flex flex-col items-center hover:bg-[#333] transition cursor-grab border border-transparent shadow-sm group">
-                  <div className="scale-75 mb-1 group-hover:scale-90 transition-transform">{CAMERA_ASSETS[type as CameraType].icon}</div>
-                  <span className="text-[8px] font-bold uppercase text-gray-500 text-center leading-none group-hover:text-gray-300 transition-colors">{CAMERA_ASSETS[type as CameraType].label}</span>
-                </div>
-              ))}
-            </div>
+        <aside className="w-64 bg-[#1E1E1E] border-l border-white/5 p-4 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-2 mb-6">
+            {Object.keys(CAMERA_ASSETS).map(t => <div key={t} draggable onDragStart={() => setDraggedType(t as CameraType)} className="p-1 bg-[#222] border border-white/10 rounded flex flex-col items-center cursor-grab hover:bg-[#333]">
+              <div className="scale-75">{CAMERA_ASSETS[t as CameraType].icon}</div>
+              <div className="text-[7px] font-bold uppercase text-gray-400 mt-1">{CAMERA_ASSETS[t as CameraType].label}</div>
+            </div>)}
           </div>
-          <div className="p-5 flex-1 bg-black/20">
-            <h3 className="text-[9px] font-black text-gray-600 uppercase mb-5 tracking-tighter">Propriedades</h3>
-            {activeCamera ? (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => {
-                    const nid = Math.random().toString(36).substr(2, 9);
-                    const isAnnot = [CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(activeCamera.type);
-                    const count = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type))).length;
-                    setCameras([...cameras, { ...activeCamera, id: nid, x: activeCamera.x + 20, y: activeCamera.y + 20, nr: isAnnot ? undefined : count + 1 }]);
-                    setSelectedId(nid);
-                  }} className="py-2 bg-blue-500/10 text-blue-500 text-[10px] font-black uppercase rounded border border-blue-500/20">Clonar</button>
-                  <button onClick={() => removeCamera(activeCamera.id)} className="py-2 bg-red-500/10 text-red-500 text-[10px] font-black uppercase rounded border border-red-500/20">Eliminar</button>
-                  <button onClick={() => updateCameraProp(activeCamera.id, { flipped: !activeCamera.flipped })} className={`col-span-2 py-2 text-[10px] font-black uppercase rounded border transition-colors ${activeCamera.flipped ? 'bg-[#FF5722] text-white border-[#FF5722]' : 'bg-white/5 text-gray-400 border-white/10'}`}>Inverter ↔</button>
-                </div>
-                {activeCamera.type !== CameraType.ARROW && activeCamera.type !== CameraType.LINE && (
-                  <div>
-                    <label className="text-[8px] font-black text-gray-500 block uppercase mb-2">Rotação ({activeCamera.rotation}°)</label>
-                    <input type="range" min="0" max="360" className="w-full accent-[#FF5722]" value={activeCamera.rotation} onChange={e => updateCameraProp(activeCamera.id, { rotation: parseInt(e.target.value) })} />
-                  </div>
-                )}
-                <div>
-                  <label className="text-[8px] font-black text-gray-500 block uppercase mb-2">Escala (x{activeCamera.scale.toFixed(2)})</label>
-                  <input type="range" min="0.5" max="3.0" step="0.1" className="w-full accent-[#FF5722]" value={activeCamera.scale} onChange={e => updateCameraProp(activeCamera.id, { scale: parseFloat(e.target.value) })} />
-                </div>
-                <div className="pt-2 border-t border-white/10 space-y-4">
-                  <input className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 text-[11px] outline-none text-gray-300" placeholder="ID Posição" value={activeCamera.position} onChange={e => updateCameraProp(activeCamera.id, { position: e.target.value })} />
-                  {activeCamera.nr && (
-                    <input className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 text-[11px] outline-none text-gray-300" placeholder="Ótica" value={activeCamera.lens} onChange={e => updateCameraProp(activeCamera.id, { lens: e.target.value })} />
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="h-full border-2 border-dashed border-white/5 rounded flex items-center justify-center text-[9px] text-gray-600 font-bold uppercase text-center px-10">Toolkit de Assets</div>
-            )}
-          </div>
-          <div className="p-4 bg-black/40 text-[8px] text-gray-700 text-center font-black uppercase tracking-[0.2em] shrink-0">ML PLANS</div>
+          {activeCamera ? <div className="space-y-4">
+            <button onClick={() => removeCamera(activeCamera.id)} className="w-full bg-red-500/10 text-red-500 border border-red-500/20 py-1 rounded text-[10px] font-bold">DELETE</button>
+            <button onClick={() => updateCameraProp(activeCamera.id, { flipped: !activeCamera.flipped })} className="w-full bg-white/5 text-gray-300 border border-white/10 py-1 rounded text-[10px] font-bold">FLIP ICON</button>
+            <input type="range" min="0" max="360" value={activeCamera.rotation} onChange={e => updateCameraProp(activeCamera.id, { rotation: parseInt(e.target.value) })} className="w-full accent-[#FF5722]"/>
+            <input className="w-full bg-black/20 border border-white/10 rounded p-2 text-xs" placeholder="Pos Label" value={activeCamera.position} onChange={e => updateCameraProp(activeCamera.id, { position: e.target.value })}/>
+          </div> : <div className="text-[10px] text-gray-600 font-bold uppercase text-center mt-20">Select item</div>}
         </aside>
       </div>
     </div>
   );
 };
-
 export default App;
