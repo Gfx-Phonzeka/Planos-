@@ -45,7 +45,6 @@ const App: React.FC = () => {
 
   // --- HANDLERS ---
   const handleStart = (e: any) => {
-    // 1. TEXTO: Se estiver a editar, permite interação com o input
     if (isEditingText) {
       if (!e.target.closest('.text-editable')) {
         setIsEditingText(false);
@@ -59,7 +58,6 @@ const App: React.FC = () => {
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 2. HANDLE (Pontos de Edição)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -67,13 +65,11 @@ const App: React.FC = () => {
       return;
     }
 
-    // 3. ITEM ARRÁSTAVEL
     const item = target.closest('.draggable-item') as HTMLElement;
     if (item) {
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
-      // Bloqueia scroll no touch, exceto se for texto
       if (currentCam?.type !== CameraType.TEXT) {
          if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       }
@@ -83,7 +79,6 @@ const App: React.FC = () => {
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
-        // Offset
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
@@ -91,7 +86,6 @@ const App: React.FC = () => {
         }
       }
     } else {
-      // Clicou no vazio
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
         setIsEditingText(false);
@@ -106,7 +100,6 @@ const App: React.FC = () => {
 
     const pos = getPointerPos(e);
 
-    // Mover Handle
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
@@ -127,7 +120,6 @@ const App: React.FC = () => {
       return;
     }
 
-    // Mover Item
     if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
@@ -170,7 +162,6 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
-  // --- DROP ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
@@ -219,16 +210,12 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- EXPORTAR PDF ---
   const exportPDF = async () => {
     try {
       const target = captureTargetRef.current;
       if (!target) return;
       
-      let minX = 0;
-      let minY = 0;
-      let maxX = selectedSport.dimensions.width;
-      let maxY = selectedSport.dimensions.height;
+      let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
 
       if(cameras.length > 0) {
           cameras.forEach(cam => {
@@ -268,13 +255,16 @@ const App: React.FC = () => {
       doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
       doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
       
-      const imgData = canvas.toDataURL('image/png');
+      // ALTERAÇÃO PARA JPEG (Resolve o problema do tamanho de ficheiro)
+      // 0.8 é a qualidade (0 a 1), reduz drasticamente o tamanho vs PNG
+      const imgData = canvas.toDataURL('image/jpeg', 0.8);
+      
       const imgRatio = w / h;
       let finalW = 180; let finalH = finalW / imgRatio;
       
       if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
       
-      doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
+      doc.addImage(imgData, 'JPEG', 10, 32, finalW, finalH);
       
       const tableData = cameras
         .filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
@@ -294,13 +284,11 @@ const App: React.FC = () => {
     }
   };
 
-  // --- RENDER ITEM ---
   const renderItem = (cam: PlacedCamera) => {
     const isSelected = selectedId === cam.id;
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO
     if (isText) {
       return (
         <div 
@@ -338,7 +326,6 @@ const App: React.FC = () => {
       );
     }
 
-    // 2. VETORES
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -367,7 +354,6 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center pointer-events-auto ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
@@ -388,17 +374,14 @@ const App: React.FC = () => {
           {CAMERA_ASSETS[cam.type].icon}
         </div>
         {cam.nr && (
-          // CORREÇÃO PDF FINAL: Substituição do Flexbox por line-height explícito para centrar
+          // CORREÇÃO CENTRAMENTO (FLEX + BORDER-BOX)
           <div 
             className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30"
             style={{ 
-              width: '16px', 
-              height: '16px', 
-              fontSize: '9px', 
-              fontWeight: 'bold',
-              textAlign: 'center', 
-              lineHeight: '14px', // (Altura 16px - Bordas 2px) = 14px de altura de linha
-              boxSizing: 'content-box' // Garante que o line-height funciona no conteúdo
+              width: '16px', height: '16px', 
+              fontSize: '9px', fontWeight: 'bold',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxSizing: 'border-box' // Garante que a borda não afeta o cálculo do centro
             }}
           >
             {cam.nr}
