@@ -1,22 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import autoTable from 'jspdf-autotable';
+import autoTable from 'jspdf-autotable'; // Certifica-te que tens: npm install jspdf-autotable
+
 import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
 const App: React.FC = () => {
+  // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
   const [cameras, setCameras] = useState<PlacedCamera[]>([]);
   const [projectTitle, setProjectTitle] = useState('EVENTO_BROADCAST_LIVE');
   const [location, setLocation] = useState('Estádio Nacional');
   const [time, setTime] = useState('21:00');
   
+  // --- ESTADO DE INTERAÇÃO ---
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   
+  // --- ESTADO DE DRAG & DROP ---
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
   const [isDraggingItem, setIsDraggingItem] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -27,12 +31,15 @@ const App: React.FC = () => {
 
   const activeCamera = cameras.find(c => c.id === selectedId);
 
-  // --- HELPERS ---
+  // --- HELPER: POSIÇÃO DO RATO ---
   const getPointerPos = (e: any) => {
     const event = e.touches && e.touches.length > 0 ? e.touches[0] : e;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    };
   };
 
   const detectZone = (x: number, y: number, sport: Sport) => {
@@ -40,15 +47,15 @@ const App: React.FC = () => {
     return 'Field of Play';
   };
 
-  // --- HANDLERS ---
+  // --- LÓGICA DE INÍCIO DE ARRASTO (HandleStart) ---
   const handleStart = (e: any) => {
-    if (isEditingText && e.target.closest('.text-annotation')) return;
-    if (e.target.closest('button') || e.target.closest('input')) return;
+    // Ignora cliques na UI
+    if (e.target.closest('button') || e.target.closest('input') || (isEditingText && e.target.closest('.text-annotation'))) return;
     
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // Handle (Pontos de Vetor)
+    // 1. DETETAR HANDLE (Pontos de Edição)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -56,10 +63,12 @@ const App: React.FC = () => {
       return;
     }
 
-    // Item Arrastável (Câmara, Texto, Vetor)
+    // 2. DETETAR ITEM ARRÁSTAVEL
     const item = target.closest('.draggable-item') as HTMLElement;
+    
     if (item) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
+      
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
@@ -68,6 +77,7 @@ const App: React.FC = () => {
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
+        // Offset
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
@@ -75,6 +85,7 @@ const App: React.FC = () => {
         }
       }
     } else {
+      // Clicou no vazio
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
         setIsEditingText(false);
@@ -82,9 +93,11 @@ const App: React.FC = () => {
     }
   };
 
+  // --- LÓGICA DE MOVIMENTO (HandleMove) ---
   const handleMove = useCallback((e: any) => {
     if (isEditingText || !canvasRef.current) return;
     if (!activeHandle && !draggingIdRef.current) return;
+    
     if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
 
     const pos = getPointerPos(e);
@@ -153,10 +166,11 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
-  // --- DROP ---
+  // --- DROP DA BIBLIOTECA ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
+
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -202,74 +216,86 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- EXPORTAR PDF ---
+  // --- EXPORTAR PDF (IMPORT FIXO & ROBUSTO) ---
   const exportPDF = async () => {
-    const target = captureTargetRef.current;
-    if (!target) return;
-    
-    // Calcular Bounding Box
-    let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
-    if(cameras.length > 0) {
-        cameras.forEach(cam => {
-        if (cam.x1 !== undefined) {
-            minX = Math.min(minX, cam.x1, cam.x2!); minY = Math.min(minY, cam.y1!, cam.y2!);
-            maxX = Math.max(maxX, cam.x1, cam.x2!); maxY = Math.max(maxY, cam.y1!, cam.y2!);
-        } else {
-            minX = Math.min(minX, cam.x - 50); minY = Math.min(minY, cam.y - 50);
-            maxX = Math.max(maxX, cam.x + 50); maxY = Math.max(maxY, cam.y + 50);
-        }
-        });
-    }
-
-    const padding = 100;
-    minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-    minX = Math.max(0, minX); minY = Math.max(0, minY);
-    maxX = Math.max(selectedSport.dimensions.width + padding, maxX);
-    maxY = Math.max(selectedSport.dimensions.height + padding, maxY);
-
-    const w = maxX - minX;
-    const h = maxY - minY;
-    
-    // Compensar Padding do Container (p-32 = 128px)
-    const wrapperOffset = 128;
-    const captureX = minX + wrapperOffset;
-    const captureY = minY + wrapperOffset;
-
-    // Configuração vital para evitar corte/zoom
-    const canvas = await html2canvas(target, { 
-      scale: 2, 
-      x: captureX, 
-      y: captureY, 
-      width: w, 
-      height: h,
-      backgroundColor: '#2D2D2D', 
-      useCORS: true,
-      windowWidth: target.scrollWidth + 500, // Força renderização completa
-      windowHeight: target.scrollHeight + 500
-    });
-    
-    const doc = new jsPDF('l', 'mm', 'a4');
-    doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
-    doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
-    doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
-    doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
-    
-    const imgData = canvas.toDataURL('image/png');
-    const imgRatio = w / h;
-    let finalW = 180; let finalH = finalW / imgRatio;
-    if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
-    doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
-    
-    const tableData = cameras
-      .filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
-      .sort((a,b) => (a.nr || 0) - (b.nr || 0))
-      .map(c => [c.nr, c.position, CAMERA_ASSETS[c.type].label, c.lens || '86x']);
+    try {
+      const target = captureTargetRef.current;
+      if (!target) {
+        console.error("Alvo de captura não encontrado");
+        return;
+      }
       
-    (doc as any).autoTable({
-      head: [['NR', 'POSIÇÃO', 'EQUIPAMENTO', 'ÓTICA']], body: tableData, startY: 32, margin: { left: 200 },
-      styles: { fontSize: 6.5, cellPadding: 1.5 }, headStyles: { fillColor: [255, 87, 34], textColor: 255 }, theme: 'grid'
-    });
-    doc.save(`${projectTitle}.pdf`);
+      console.log("A iniciar exportação...");
+
+      // 1. Calcular Limites
+      let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
+      if(cameras.length > 0) {
+          cameras.forEach(cam => {
+          if (cam.x1 !== undefined) {
+              minX = Math.min(minX, cam.x1, cam.x2!); minY = Math.min(minY, cam.y1!, cam.y2!);
+              maxX = Math.max(maxX, cam.x1, cam.x2!); maxY = Math.max(maxY, cam.y1!, cam.y2!);
+          } else {
+              minX = Math.min(minX, cam.x - 50); minY = Math.min(minY, cam.y - 50);
+              maxX = Math.max(maxX, cam.x + 50); maxY = Math.max(maxY, cam.y + 50);
+          }
+          });
+      }
+
+      const padding = 100;
+      minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+      minX = Math.max(0, minX); minY = Math.max(0, minY);
+      maxX = Math.max(selectedSport.dimensions.width + padding, maxX);
+      maxY = Math.max(selectedSport.dimensions.height + padding, maxY);
+
+      const w = maxX - minX;
+      const h = maxY - minY;
+      
+      // Compensar Padding do Container
+      const wrapperOffset = 128;
+      const captureX = minX + wrapperOffset;
+      const captureY = minY + wrapperOffset;
+
+      // 2. HTML2Canvas
+      const canvas = await html2canvas(target, { 
+        scale: 2, 
+        x: captureX, y: captureY, width: w, height: h,
+        backgroundColor: '#2D2D2D', 
+        useCORS: true,
+        windowWidth: target.scrollWidth + 500,
+        windowHeight: target.scrollHeight + 500
+      });
+      
+      // 3. JsPDF
+      const doc = new jsPDF('l', 'mm', 'a4');
+      doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
+      doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
+      doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
+      doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const imgRatio = w / h;
+      let finalW = 180; let finalH = finalW / imgRatio;
+      if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
+      doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
+      
+      // 4. AutoTable
+      const tableData = cameras
+        .filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
+        .sort((a,b) => (a.nr || 0) - (b.nr || 0))
+        .map(c => [c.nr, c.position, CAMERA_ASSETS[c.type].label, c.lens || '86x']);
+        
+      autoTable(doc, {
+        head: [['NR', 'POSIÇÃO', 'EQUIPAMENTO', 'ÓTICA']], body: tableData, startY: 32, margin: { left: 200 },
+        styles: { fontSize: 6.5, cellPadding: 1.5 }, headStyles: { fillColor: [255, 87, 34], textColor: 255 }, theme: 'grid'
+      });
+
+      doc.save(`${projectTitle}.pdf`);
+      console.log("PDF Gerado com sucesso!");
+
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      alert("Ocorreu um erro ao gerar o PDF. Verifica a consola para mais detalhes.");
+    }
   };
 
   // --- RENDERIZADOR ---
@@ -278,7 +304,7 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO (Editável)
+    // 1. TEXTO
     if (isText) {
       return (
         <div 
@@ -340,7 +366,7 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS (Rotação Independente)
+    // 3. CÂMARAS
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
@@ -405,7 +431,7 @@ const App: React.FC = () => {
               <svg ref={canvasRef} width={selectedSport.dimensions.width} height={selectedSport.dimensions.height} className="bg-[#121212] shadow-2xl rounded-sm pointer-events-none ring-1 ring-white/10 fop-svg">
                 {selectedSport.render()}
               </svg>
-              <div className="absolute inset-0 p-32">
+              <div className="absolute inset-0 pointer-events-none p-32">
                 <div className="relative w-full h-full">
                   {cameras.map(cam => renderItem(cam))}
                 </div>
@@ -430,7 +456,7 @@ const App: React.FC = () => {
 
         <aside className="w-[280px] bg-[#1E1E1E] border-l border-white/10 flex flex-col shrink-0 z-10 overflow-y-auto">
           <div className="p-5 border-b border-white/10">
-            <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit</h3>
+            <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit de Assets</h3>
             <div className="grid grid-cols-3 gap-3">
               {Object.keys(CAMERA_ASSETS).map(type => (
                 <div key={type} draggable onDragStart={() => setDraggedType(type as CameraType)} className="bg-[#222] p-2 rounded flex flex-col items-center hover:bg-[#333] transition cursor-grab border border-transparent shadow-sm group">
