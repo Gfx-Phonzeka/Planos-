@@ -4,19 +4,16 @@ import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
 const App: React.FC = () => {
-  // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
   const [cameras, setCameras] = useState<PlacedCamera[]>([]);
   const [projectTitle, setProjectTitle] = useState('EVENTO_BROADCAST_LIVE');
   const [location, setLocation] = useState('Estádio Nacional');
   const [time, setTime] = useState('21:00');
   
-  // --- ESTADO DE INTERAÇÃO ---
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   
-  // --- ESTADO DE DRAG & DROP ---
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
   const [isDraggingItem, setIsDraggingItem] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -27,7 +24,6 @@ const App: React.FC = () => {
 
   const activeCamera = cameras.find(c => c.id === selectedId);
 
-  // --- HELPER: POSIÇÃO DO RATO ---
   const getPointerPos = (e: any) => {
     const event = e.touches && e.touches.length > 0 ? e.touches[0] : e;
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -43,15 +39,12 @@ const App: React.FC = () => {
     return 'Field of Play';
   };
 
-  // --- LÓGICA DE INÍCIO DE ARRASTO (HandleStart) ---
   const handleStart = (e: any) => {
-    // Ignora cliques na UI
     if (e.target.closest('button') || e.target.closest('input') || (isEditingText && e.target.closest('.text-annotation'))) return;
     
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 1. DETETAR HANDLE (Pontos de Edição)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -59,22 +52,15 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. DETETAR QUALQUER ITEM (Câmara, Texto, Vetor)
-    // Procuramos pelas várias classes possíveis para garantir que apanha tudo
-    const item = target.closest('.camera-item, .vector-item, .text-annotation') as HTMLElement;
-    
+    const item = target.closest('.draggable-item') as HTMLElement;
     if (item) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
-      
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
-      
       if (currentCam) {
         setSelectedId(id);
         draggingIdRef.current = id;
         setIsDraggingItem(true);
-        
-        // Calcular Offset
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
@@ -82,7 +68,6 @@ const App: React.FC = () => {
         }
       }
     } else {
-      // Clicou no vazio
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
         setIsEditingText(false);
@@ -90,16 +75,12 @@ const App: React.FC = () => {
     }
   };
 
-  // --- LÓGICA DE MOVIMENTO (HandleMove) ---
   const handleMove = useCallback((e: any) => {
     if (isEditingText || !canvasRef.current) return;
     if (!activeHandle && !draggingIdRef.current) return;
-    
     if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
-
     const pos = getPointerPos(e);
 
-    // CASO 1: EDITAR PONTOS
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
@@ -120,33 +101,23 @@ const App: React.FC = () => {
       return;
     }
 
-    // CASO 2: ARRASTAR ITEM
     if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
-          
           if (c.type === CameraType.ARROW || c.type === CameraType.LINE) {
              const dx = pos.x - dragOffset.x;
              const dy = pos.y - dragOffset.y;
              setDragOffset({ x: pos.x, y: pos.y }); 
-             
              return { 
-               ...c, 
-               x: pos.x, y: pos.y, 
+               ...c, x: pos.x, y: pos.y, 
                x1: (c.x1 || 0) + dx, y1: (c.y1 || 0) + dy,
                x2: (c.x2 || 0) + dx, y2: (c.y2 || 0) + dy,
                position: detectZone(pos.x, pos.y, selectedSport)
              };
           }
-
           const newX = pos.x - dragOffset.x;
           const newY = pos.y - dragOffset.y;
-          
-          return { 
-            ...c, 
-            x: newX, y: newY, 
-            position: detectZone(newX, newY, selectedSport) 
-          };
+          return { ...c, x: newX, y: newY, position: detectZone(newX, newY, selectedSport) };
         }
         return c;
       }));
@@ -172,11 +143,9 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
-  // --- DROP DA BIBLIOTECA ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
-
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -190,22 +159,15 @@ const App: React.FC = () => {
       id: Math.random().toString(36).substr(2, 9),
       nr: (isVector || isText) ? undefined : cameraCount + 1,
       type: draggedType,
-      x,
-      y,
-      x1: isVector ? x - 60 : undefined,
-      y1: isVector ? y - 30 : undefined,
-      x2: isVector ? x + 60 : undefined,
-      y2: isVector ? y + 30 : undefined,
-      rotation: 0,
-      scale: 1.0,
-      flipped: false,
+      x, y,
+      x1: isVector ? x - 60 : undefined, y1: isVector ? y - 30 : undefined,
+      x2: isVector ? x + 60 : undefined, y2: isVector ? y + 30 : undefined,
+      rotation: 0, scale: 1.0, flipped: false,
       position: detectZone(x, y, selectedSport),
-      config: asset.config || 'HD',
-      mount: asset.mount || 'Fixed',
+      config: asset.config || 'HD', mount: asset.mount || 'Fixed',
       lens: (isVector || isText) ? '' : (asset.lens || '86x'),
       text: isText ? 'EDITAR TEXTO' : undefined
     };
-
     setCameras([...cameras, newCam]);
     setSelectedId(newCam.id);
     setDraggedType(null);
@@ -228,17 +190,12 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- EXPORTAR PDF (CORRIGIDO: Window Size & Bounds) ---
   const exportPDF = async () => {
     const { jsPDF } = (window as any).jspdf;
     const target = captureTargetRef.current;
     if (!target) return;
     
-    // 1. Calcular Limites (Min/Max X e Y)
-    // Começa com os limites do campo de jogo (para garantir que aparece sempre o campo todo)
     let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
-    
-    // Expande os limites se houver câmaras fora do campo
     if(cameras.length > 0) {
         cameras.forEach(cam => {
         if (cam.x1 !== undefined) {
@@ -251,36 +208,27 @@ const App: React.FC = () => {
         });
     }
 
-    // 2. Adicionar Padding Visual
     const padding = 100;
     minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-    
-    // Clampar a zero (não queremos coordenadas negativas no corte)
     minX = Math.max(0, minX); minY = Math.max(0, minY);
-    // Garantir que o maxX vai pelo menos até ao fim do campo (caso não haja câmaras lá)
     maxX = Math.max(selectedSport.dimensions.width + padding, maxX);
     maxY = Math.max(selectedSport.dimensions.height + padding, maxY);
 
     const w = maxX - minX;
     const h = maxY - minY;
     
-    // 3. Compensar o Padding do Wrapper (p-32 = 128px)
-    // O html2canvas captura o elemento 'target', que tem p-32. 
-    // O conteúdo (SVG) começa em (128, 128) dentro desse target.
+    // OFFSET MAGICO PARA CORRIGIR O P-32
     const wrapperOffset = 128;
     const captureX = minX + wrapperOffset;
     const captureY = minY + wrapperOffset;
 
-    // 4. Captura com WindowWidth FORÇADO (Isto resolve o bug do "Zoom In/Corte")
+    // AQUI ESTÁ A CORREÇÃO DO ZOOM/CORTE: windowWidth
     const canvas = await (window as any).html2canvas(target, { 
       scale: 2, 
-      x: captureX, 
-      y: captureY, 
-      width: w, 
-      height: h,
+      x: captureX, y: captureY, width: w, height: h,
       backgroundColor: '#2D2D2D', 
       useCORS: true,
-      windowWidth: target.scrollWidth + 500, // Força renderização total
+      windowWidth: target.scrollWidth + 500,
       windowHeight: target.scrollHeight + 500
     });
     
@@ -293,9 +241,7 @@ const App: React.FC = () => {
     const imgData = canvas.toDataURL('image/png');
     const imgRatio = w / h;
     let finalW = 180; let finalH = finalW / imgRatio;
-    
     if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
-    
     doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
     
     const tableData = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
@@ -309,7 +255,6 @@ const App: React.FC = () => {
     doc.save(`${projectTitle}.pdf`);
   };
 
-  // --- RENDER ITEM ---
   const renderItem = (cam: PlacedCamera) => {
     const isSelected = selectedId === cam.id;
     const isText = cam.type === CameraType.TEXT;
@@ -318,7 +263,7 @@ const App: React.FC = () => {
     if (isText) {
       return (
         <div 
-          className={`text-annotation absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
+          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
           data-id={cam.id}
           style={{ 
              left: cam.x - 100, top: cam.y - 20, 
@@ -328,7 +273,7 @@ const App: React.FC = () => {
           }}
         >
           <div 
-            className={`w-full text-center ${isEditingText && isSelected ? 'pointer-events-auto cursor-text' : 'pointer-events-none'}`}
+            className={`text-annotation w-full text-center ${isEditingText && isSelected ? 'pointer-events-auto cursor-text' : 'pointer-events-none'}`}
             contentEditable={isEditingText && isSelected}
             onBlur={(e) => { setIsEditingText(false); updateCameraProp(cam.id, { text: e.currentTarget.innerText }); }}
             suppressContentEditableWarning
@@ -357,7 +302,7 @@ const App: React.FC = () => {
 
       return (
         <div 
-           className="vector-item absolute" 
+           className="draggable-item absolute" 
            data-id={cam.id}
            style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}
         >
@@ -366,27 +311,10 @@ const App: React.FC = () => {
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
             {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill={isSelected ? "#2196F3" : "#FFF"} transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} style={{ pointerEvents: 'none' }} />}
           </svg>
-          
           {isSelected && (
             <>
-              <div 
-                className="handle absolute" data-id={cam.id} data-index="1" 
-                style={{ 
-                   left: lx1, top: ly1, 
-                   width: '12px', height: '12px', 
-                   backgroundColor: '#FFF', border: '2px solid #2196F3', 
-                   transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' 
-                }} 
-              />
-              <div 
-                className="handle absolute" data-id={cam.id} data-index="2" 
-                style={{ 
-                   left: lx2, top: ly2, 
-                   width: '12px', height: '12px', 
-                   backgroundColor: '#FFF', border: '2px solid #2196F3', 
-                   transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' 
-                }} 
-              />
+              <div className="handle absolute" data-id={cam.id} data-index="1" style={{ left: lx1, top: ly1, width: '12px', height: '12px', backgroundColor: '#FFF', border: '2px solid #2196F3', transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' }} />
+              <div className="handle absolute" data-id={cam.id} data-index="2" style={{ left: lx2, top: ly2, width: '12px', height: '12px', backgroundColor: '#FFF', border: '2px solid #2196F3', transform: 'translate(-50%, -50%)', cursor: 'crosshair', pointerEvents: 'auto' }} />
             </>
           )}
         </div>
@@ -395,22 +323,16 @@ const App: React.FC = () => {
 
     return (
       <div 
-         className={`camera-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
+         className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'selected-cam' : ''}`}
          data-id={cam.id}
-         style={{ 
-            left: cam.x - 20, top: cam.y - 20, 
-            width: 40, height: 40,
-            zIndex: isSelected ? 100 : 20,
-            cursor: 'move'
-         }}
+         style={{ left: cam.x - 20, top: cam.y - 20, width: 40, height: 40, zIndex: isSelected ? 100 : 20, cursor: 'move' }}
       >
         <div className="relative w-full h-full flex items-center justify-center">
           <div style={{ transform: `rotate(${cam.rotation}deg) scaleX(${cam.flipped ? -1 : 1}) scale(${cam.scale})`, transformOrigin: 'center', display:'flex', alignItems:'center', justifyContent:'center', width:'100%', height:'100%' }}>
             {CAMERA_ASSETS[cam.type].icon}
           </div>
           {cam.nr && (
-            <div className="absolute bg-black border border-white rounded-full flex items-center justify-center text-white font-bold shadow-md z-[20]"
-                 style={{ width: '18px', height: '18px', fontSize: '10px', top: '-5px', right: '-5px' }}>
+            <div className="absolute bg-black border border-white rounded-full flex items-center justify-center text-white font-bold shadow-md z-[20]" style={{ width: '18px', height: '18px', fontSize: '10px', top: '-5px', right: '-5px' }}>
               {cam.nr}
             </div>
           )}
@@ -457,14 +379,7 @@ const App: React.FC = () => {
               </svg>
               <div className="absolute inset-0 pointer-events-none p-32">
                 <div className="relative w-full h-full">
-                  {cameras.map(cam => {
-                    const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
-                    return (
-                      <div key={cam.id} data-id={cam.id} data-type={cam.type} className={`camera-item pointer-events-auto flex items-center justify-center ${selectedId === cam.id ? 'selected-cam' : ''}`} style={isVector ? {} : { left: cam.x, top: cam.y, transform: 'translate(-50%, -50%)', zIndex: selectedId === cam.id ? 100 : 10 }}>
-                        {renderItem(cam)}
-                      </div>
-                    );
-                  })}
+                  {cameras.map(cam => renderItem(cam))}
                 </div>
               </div>
             </div>
