@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import autoTable from 'jspdf-autotable';
 import { CameraType, PlacedCamera, Sport } from './types';
 import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
@@ -37,7 +40,6 @@ const App: React.FC = () => {
   };
 
   const handleStart = (e: any) => {
-    // If clicking a button or input in sidebars, don't start dragging
     if (e.target.closest('button') || e.target.closest('input') || isEditingText) return;
     
     const target = e.target as HTMLElement;
@@ -55,7 +57,6 @@ const App: React.FC = () => {
       setSelectedId(id);
       draggingIdRef.current = id;
     } else {
-      // Only deselect if clicking the canvas background, not UI
       if (target.closest('.canvas-container')) {
         setSelectedId(null);
       }
@@ -180,11 +181,9 @@ const App: React.FC = () => {
   };
 
   const exportPDF = async () => {
-    const { jsPDF } = (window as any).jspdf;
     const target = captureTargetRef.current;
     if (!target) return;
     
-    // Bounds calculation for smart crop
     let minX = 0, minY = 0, maxX = selectedSport.dimensions.width, maxY = selectedSport.dimensions.height;
     cameras.forEach(cam => {
       if (cam.x1 !== undefined) {
@@ -198,24 +197,28 @@ const App: React.FC = () => {
     const padding = 100;
     const bounds = { x: minX - padding + 128, y: minY - padding + 128, w: (maxX - minX) + (padding * 2), h: (maxY - minY) + (padding * 2) };
 
-    const canvas = await (window as any).html2canvas(target, { 
+    const canvas = await html2canvas(target, { 
       scale: 2, x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h,
       backgroundColor: '#2D2D2D', useCORS: true
     });
+    
     const doc = new jsPDF('l', 'mm', 'a4');
     doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
     doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
     doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
     doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
+    
     const imgData = canvas.toDataURL('image/png');
     const imgRatio = canvas.width / canvas.height;
     let finalW = 180; let finalH = finalW / imgRatio;
     if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
     doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
+    
     const tableData = cameras.filter(c => !([CameraType.TEXT, CameraType.ARROW, CameraType.LINE].includes(c.type)))
       .sort((a,b) => (a.nr || 0) - (b.nr || 0))
       .map(c => [c.nr?.toString(), `${c.position}`, CAMERA_ASSETS[c.type].label, c.lens || '86x']);
-    (doc as any).autoTable({
+      
+    autoTable(doc, {
       head: [['NR', 'POSIÇÃO', 'EQUIPAMENTO', 'ÓTICA']], body: tableData, startY: 32, margin: { left: 200 },
       styles: { fontSize: 6.5, cellPadding: 1.5 }, headStyles: { fillColor: [255, 87, 34], textColor: 255 }, theme: 'grid'
     });
