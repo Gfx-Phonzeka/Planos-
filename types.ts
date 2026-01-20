@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export enum CameraType {
@@ -22,24 +21,28 @@ export enum CameraType {
 }
 
 export interface PlacedCamera {
-  id: string;
+  id: string | number;
   nr?: number;
-  type: CameraType;
+  displayId?: string | number | null;
+  type: string; // Permitir string para flexibilidade
   x: number;
   y: number;
-  x1?: number;
+  x1?: number; // Para vetores
   y1?: number;
   x2?: number;
   y2?: number;
   rotation: number;
   scale: number;
   flipped?: boolean;
-  position: string;
-  config: string;
-  mount: string;
-  lens: string;
+  position?: string;
+  lens?: string;
   text?: string;
 }
+
+// Aliases para compatibilidade com o código do App.tsx
+export type CameraItem = PlacedCamera;
+export type VectorItem = PlacedCamera;
+export interface Point { x: number; y: number; }
 
 export interface Sport {
   id: string;
