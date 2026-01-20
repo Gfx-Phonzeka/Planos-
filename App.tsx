@@ -7,19 +7,16 @@ import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
 const App: React.FC = () => {
-  // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
   const [cameras, setCameras] = useState<PlacedCamera[]>([]);
   const [projectTitle, setProjectTitle] = useState('EVENTO_BROADCAST_LIVE');
   const [location, setLocation] = useState('Estádio Nacional');
   const [time, setTime] = useState('21:00');
   
-  // --- ESTADO DE INTERAÇÃO ---
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   
-  // --- ESTADO DE DRAG & DROP ---
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
   const [isDraggingItem, setIsDraggingItem] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -48,12 +45,12 @@ const App: React.FC = () => {
 
   // --- HANDLERS ---
   const handleStart = (e: any) => {
-    // 1. TEXTO: Se estiver a editar, permite interação com o input, caso contrário cancela edição
+    // 1. TEXTO: Se estiver a editar, permite interação com o input
     if (isEditingText) {
       if (!e.target.closest('.text-editable')) {
         setIsEditingText(false);
       } else {
-        return; // Deixa o cursor funcionar dentro do texto
+        return; 
       }
     }
 
@@ -76,7 +73,7 @@ const App: React.FC = () => {
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
-      // Bloqueia scroll no touch, exceto se for texto (para não atrapalhar edição)
+      // Bloqueia scroll no touch, exceto se for texto (para permitir seleção)
       if (currentCam?.type !== CameraType.TEXT) {
          if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       }
@@ -303,11 +300,11 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO (Contentor pointer-events-none, mas filho auto e select-text)
+    // 1. TEXTO
     if (isText) {
       return (
         <div 
-          className="draggable-item absolute flex items-center justify-center pointer-events-none"
+          className={`draggable-item absolute flex items-center justify-center pointer-events-none`}
           data-id={cam.id}
           style={{ 
              left: cam.x, top: cam.y, 
@@ -341,7 +338,7 @@ const App: React.FC = () => {
       );
     }
 
-    // 2. VETORES (CRÍTICO: pointer-events-none no contentor, mas auto na linha invisível)
+    // 2. VETORES
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -356,9 +353,7 @@ const App: React.FC = () => {
       return (
         <div className="draggable-item absolute pointer-events-none" data-id={cam.id} style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}>
           <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
-            {/* LINHA DE TOQUE INVISÍVEL: pointer-events-auto */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
-            {/* LINHA VISÍVEL: pointer-events-none */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
             {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill={isSelected ? "#2196F3" : "#FFF"} transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} style={{ pointerEvents: 'none' }} />}
           </svg>
@@ -372,7 +367,7 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS (Contentor auto)
+    // 3. CÂMARAS
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center pointer-events-auto ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
@@ -393,13 +388,14 @@ const App: React.FC = () => {
           {CAMERA_ASSETS[cam.type].icon}
         </div>
         {cam.nr && (
-          // CORREÇÃO PDF: Flexbox robusto para centrar
+          // CORREÇÃO PDF: Flexbox explicito para centrar
           <div 
-            className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30 flex items-center justify-center"
+            className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30"
             style={{ 
               width: '16px', height: '16px', 
-              fontSize: '9px', fontWeight: 'bold', // Reduzi ligeiramente a fonte
-              padding: 0 // Importante para o PDF
+              fontSize: '9px', fontWeight: 'bold',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxSizing: 'border-box' // Garante que o border não estraga o tamanho
             }}
           >
             {cam.nr}
