@@ -1,34 +1,12 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ML PLANS V23</title>
-    <script>
-        window.onerror = function(msg, url, line, col, error) {
-            document.body.innerHTML = '<div style="background:#800;color:#fff;padding:20px;font-family:monospace;z-index:9999;position:fixed;top:0;left:0;width:100%;height:100%;"><h2>CRITICAL ERROR</h2><p>'+msg+'</p><p>Line: '+line+'</p></div>';
-        };
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-    <style>
-        body { background:#121212; color:#eee; font-family:'Roboto',sans-serif; margin:0; height:100dvh; overflow:hidden; touch-action:none; }
-        .sidebar { background:#1e1e1e; border-color:#333; }
-        .canvas-area { background:#252526; background-image:radial-gradient(#333 1px,transparent 1px); background-size:20px 20px; }
-        .camera-item { position:absolute; cursor:move; touch-action:none; user-select:none; }
-        .selected { outline:2px solid #ff5722; outline-offset:4px; border-radius:4px; }
-        .handle { width:12px; height:12px; background:#fff; border:2px solid #2196f3; border-radius:50%; position:absolute; z-index:1000; cursor:crosshair; }
-        ::-webkit-scrollbar { width:4px; }
-        ::-webkit-scrollbar-thumb { background:#444; }
-    </style>
-    <script type="importmap">
-    { "imports": { "react-dom/": "https://esm.sh/react-dom@^19.2.3/", "react": "https://esm.sh/react@^19.2.3", "react/": "https://esm.sh/react@^19.2.3/" } }
-    </script>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ML Plans</title>
+  </head>
+  <body>
     <div id="root"></div>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>
