@@ -1,67 +1,67 @@
 import React from 'react';
 import { CameraType } from './types';
 
-export const CAMERA_ASSETS: Record<CameraType | string, { label: string, icon: React.ReactNode, config?: string, mount?: string, lens?: string }> = {
-  [CameraType.STANDARD]: {
-    label: 'Standard',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><path d="M12 22h36v20H12zM12 32h36M48 26l8-6v24l-8-6"/><path d="M20 42l-4 14M40 42l4 14M30 42v14"/></svg>,
-    config: 'System', mount: 'Tripod', lens: '86x'
+// Estilos comuns para os SVGs (Traço branco, fundo transparente, responsivo)
+const s = { 
+  fill: "none", 
+  stroke: "#FFF", 
+  strokeWidth: "1.8",
+  width: "100%",
+  height: "100%"
+};
+
+export const CAMERA_ASSETS: Record<string, any> = {
+  [CameraType.STANDARD]: { 
+    label: 'Std', 
+    icon: <svg viewBox="0 0 24 24" {...s}><rect x="4" y="7" width="12" height="6"/><path d="M16 8l4-1v6l-4-1M6 13l-2 8M14 13l2 8"/></svg> 
   },
-  [CameraType.HANDHELD]: {
-    label: 'Handheld',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><circle cx="32" cy="14" r="5"/><path d="M32 19v16l-10 10M32 35l10 10M20 25h24"/><path d="M44 25l6-2v6l-6-2z"/></svg>,
-    config: 'System', mount: 'Shoulder', lens: '22x'
+  [CameraType.HANDHELD]: { 
+    label: 'Hand', 
+    icon: <svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="5" r="3"/><path d="M7 10h10l-2 12H9z"/><rect x="14" y="9" width="5" height="4"/></svg> 
   },
-  [CameraType.STEADICAM]: {
-    label: 'Steadicam',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><circle cx="32" cy="16" r="4"/><path d="M32 20v18M24 24h16v10H24z"/><path d="M40 28l12 4l-4 12"/><rect x="44" y="44" width="8" height="6"/></svg>,
-    config: 'RF', mount: 'Steadicam', lens: 'Wide'
+  [CameraType.STEADICAM]: { 
+    label: 'Steadi', 
+    icon: <svg viewBox="0 0 24 24" {...s}><circle cx="8" cy="6" r="2"/><path d="M8 8v8l-2 6M8 10h6l2 2h4v3"/><circle cx="20" cy="15" r="1.5"/></svg> 
   },
-  [CameraType.TRACKCAM]: {
-    label: 'Trackcam',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><path d="M4 48h56M12 48v4M52 48v4M12 52h40"/><rect x="22" y="32" width="20" height="12"/><path d="M42 36l8-4v12l-8-4"/></svg>,
-    config: 'Remote', mount: 'Rail', lens: 'Wide'
+  [CameraType.TRACKCAM]: { 
+    label: 'Track', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M2 20h20M2 23h20"/><rect x="7" y="8" width="10" height="7"/></svg> 
   },
-  [CameraType.SKYCAM]: {
-    label: 'Skycam',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><path d="M4 4l24 24M60 4l-24 24M4 60l24-24M60 60l-24-24"/><circle cx="32" cy="32" r="8"/><circle cx="32" cy="32" r="3"/></svg>,
-    config: 'Remote', mount: 'Cable', lens: 'Wide'
+  [CameraType.SKYCAM]: { 
+    label: 'Sky', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M2 2l6 6M22 2l-6 6M2 22l6-6M22 22l-6-6"/><rect x="8" y="8" width="8" height="8"/></svg> 
   },
-  [CameraType.CRANE]: {
-    label: 'Crane',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><path d="M10 50l20-30l30 20"/><path d="M30 20l-4 30h8z"/><rect x="54" y="36" width="8" height="6"/></svg>,
-    config: 'System', mount: 'Jib', lens: 'Wide'
+  [CameraType.CRANE]: { 
+    label: 'Crane', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M4 22L18 6"/><rect x="18" y="3" width="5" height="4"/></svg> 
   },
-  [CameraType.DRONE]: {
-    label: 'Drone',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><path d="M12 12l40 40M52 12L12 52"/><circle cx="32" cy="32" r="6"/><circle cx="12" cy="12" r="4"/><circle cx="52" cy="12" r="4"/><circle cx="52" cy="52" r="4"/><circle cx="12" cy="52" r="4"/></svg>,
-    config: 'RF', mount: 'Drone', lens: 'Wide'
+  [CameraType.DRONE]: { 
+    label: 'Drone', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M6 6l12 12M18 6L6 18"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg> 
   },
-  [CameraType.MINICAM]: {
-    label: 'Minicam',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><rect x="20" y="24" width="24" height="16" rx="2"/><path d="M32 40v8M24 48h16"/></svg>,
-    config: 'Special', mount: 'Fixed', lens: 'Wide'
+  [CameraType.MINICAM]: { 
+    label: 'Mini', 
+    icon: <svg viewBox="0 0 24 24" {...s}><rect x="7" y="7" width="10" height="10"/><circle cx="12" cy="12" r="2"/></svg> 
   },
-  [CameraType.SSM]: {
-    label: 'Super Slow',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><path d="M10 20h34v24H10zM44 28l10-6v20l-10-6"/><circle cx="27" cy="32" r="8"/><path d="M27 26v6h4"/></svg>,
-    config: 'SSM', mount: 'Tripod', lens: '86x'
+  [CameraType.SSM]: { 
+    label: 'SSM', 
+    icon: <svg viewBox="0 0 24 24" {...s}><rect x="4" y="7" width="14" height="6"/><path d="M6 13l-2 8M16 13l2 8"/></svg> 
   },
-  [CameraType.POLECAM]: {
-    label: 'Polecam',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><line x1="10" y1="50" x2="50" y2="20"/><rect x="48" y="16" width="8" height="6"/><path d="M10 50l-5 5M10 50l5 5"/></svg>,
-    config: 'Special', mount: 'Pole', lens: 'Wide'
+  [CameraType.POLECAM]: { 
+    label: 'Pole', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M4 20L20 4"/><rect x="19" y="2" width="4" height="4"/></svg> 
   },
-  [CameraType.TEXT]: {
-    label: 'Texto',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><rect x="4" y="16" width="56" height="32" strokeDasharray="4 4"/><text x="32" y="38" textAnchor="middle" fill="white" fontSize="20" stroke="none">TXT</text></svg>
+  // O ícone do Texto é apenas para a barra lateral
+  [CameraType.TEXT]: { 
+    label: 'Text', 
+    icon: <svg viewBox="0 0 24 24" width="100%" height="100%"><text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fill="#FFF" fontSize="16" fontWeight="900">T</text></svg> 
   },
-  [CameraType.ARROW]: {
-    label: 'Seta',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><line x1="10" y1="32" x2="54" y2="32" strokeDasharray="4 4"/><path d="M48 26l6 6l-6 6"/></svg>
+  [CameraType.ARROW]: { 
+    label: 'Arrow', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M4 12h16m-6-6l6 6-6 6"/></svg> 
   },
-  [CameraType.LINE]: {
-    label: 'Linha',
-    icon: <svg viewBox="0 0 64 64" fill="none" stroke="white" strokeWidth="2"><line x1="10" y1="10" x2="54" y2="54"/></svg>
+  [CameraType.LINE]: { 
+    label: 'Line', 
+    icon: <svg viewBox="0 0 24 24" {...s}><path d="M4 12h16"/></svg> 
   }
 };
