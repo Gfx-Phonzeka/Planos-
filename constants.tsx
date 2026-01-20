@@ -30,28 +30,39 @@ export const CAMERA_ASSETS: Record<string, { label: string, icon: React.ReactNod
     config: 'SSM', mount: 'Tripod', lens: '86x'
   },
 
-  // --- NOVOS ASSETS ---
   [CameraType.ULTRASLOW]: { 
     label: 'UltraSlow', 
-    // Corpo robusto com indicador de velocidade (setas) e lente grande
     icon: <svg viewBox="0 0 24 24" {...s}><rect x="2" y="5" width="14" height="14" rx="2" fill="#FFF" fillOpacity="0.1"/><path d="M16 8l6 4l-6 4z" fill="#FFF"/><path d="M5 8l3 4l-3 4" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 8l3 4l-3 4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     config: 'HFR', mount: 'Tripod', lens: '86x'
   },
 
   [CameraType.PTZ]: { 
     label: 'PTZ', 
-    // Vista de cima: Base redonda com cabeça rotativa e eixo
     icon: <svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="12" r="8" strokeOpacity="0.5"/><rect x="8" y="8" width="8" height="8" rx="2" fill="#FFF"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>,
     config: 'Remote', mount: 'Fixed', lens: 'Int'
   },
 
   [CameraType.PERICAM]: { 
     label: 'Pericam', 
-    // Periscópio: Tubo vertical com dobra a 90 graus no topo
     icon: <svg viewBox="0 0 24 24" {...s}><path d="M10 21L14 21" strokeWidth="3"/><line x1="12" y1="21" x2="12" y2="6"/><path d="M12 6h5v5"/><rect x="17" y="6" width="4" height="5" fill="#FFF"/></svg>,
     config: 'Special', mount: 'Periscope', lens: 'Wide'
   },
-  // --------------------
+
+  // --- NOVOS ADICIONADOS (Correção do Bug) ---
+  [CameraType.UNDERWATER]: { 
+    label: 'Underwater', 
+    // Caixa estanque com dome port
+    icon: <svg viewBox="0 0 24 24" {...s}><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M12 18v3M8 21h8"/><path d="M12 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>,
+    config: 'Special', mount: 'Sub', lens: 'Wide'
+  },
+
+  [CameraType.BODYCAM]: { 
+    label: 'Bodycam', 
+    // Unidade pequena de peito
+    icon: <svg viewBox="0 0 24 24" {...s}><rect x="6" y="5" width="12" height="14" rx="2" fill="#FFF" fillOpacity="0.1"/><circle cx="12" cy="10" r="3" fill="#FFF"/><rect x="9" y="16" width="6" height="2" rx="1"/></svg>,
+    config: 'RF', mount: 'Body', lens: 'Wide'
+  },
+  // -------------------------------------------
 
   [CameraType.HANDHELD]: { 
     label: 'Handheld', 
