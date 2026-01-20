@@ -7,16 +7,19 @@ import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
 const App: React.FC = () => {
+  // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
   const [cameras, setCameras] = useState<PlacedCamera[]>([]);
   const [projectTitle, setProjectTitle] = useState('EVENTO_BROADCAST_LIVE');
   const [location, setLocation] = useState('Estádio Nacional');
   const [time, setTime] = useState('21:00');
   
+  // --- ESTADO DE INTERAÇÃO ---
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   
+  // --- ESTADO DE DRAG & DROP ---
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
   const [isDraggingItem, setIsDraggingItem] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -27,7 +30,7 @@ const App: React.FC = () => {
 
   const activeCamera = cameras.find(c => c.id === selectedId);
 
-  // --- HELPER: POSIÇÃO DO RATO ---
+  // --- HELPERS ---
   const getPointerPos = (e: any) => {
     const event = e.touches && e.touches.length > 0 ? e.touches[0] : e;
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -45,15 +48,12 @@ const App: React.FC = () => {
 
   // --- HANDLERS ---
   const handleStart = (e: any) => {
-    // SE ESTIVER A EDITAR TEXTO:
-    // Permite clicar dentro do texto para mover o cursor, mas bloqueia o arrasto do contentor.
+    // 1. TEXTO: Se estiver a editar, permite interação com o input, caso contrário cancela edição
     if (isEditingText) {
       if (!e.target.closest('.text-editable')) {
-        // Clicou fora -> Termina edição
         setIsEditingText(false);
       } else {
-        // Clicou dentro -> Deixa o evento passar para o contentEditable funcionar
-        return; 
+        return; // Deixa o cursor funcionar dentro do texto
       }
     }
 
@@ -62,7 +62,7 @@ const App: React.FC = () => {
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 1. HANDLE (Pontos de Vetor)
+    // 2. HANDLE (Pontos de Edição dos Vetores)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -70,15 +70,13 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. ITEM ARRÁSTAVEL
+    // 3. ITEM ARRÁSTAVEL (Câmaras, Linhas, Texto)
     const item = target.closest('.draggable-item') as HTMLElement;
     if (item) {
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
-      // Lógica Especial para Texto:
-      // Se for texto, não faz preventDefault no touchStart para não bloquear o teclado virtual/seleção
-      // Se não for texto, prevenimos o default para evitar scrolls indesejados
+      // Bloqueia scroll no touch, exceto se for texto (para não atrapalhar edição)
       if (currentCam?.type !== CameraType.TEXT) {
          if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
       }
@@ -88,6 +86,7 @@ const App: React.FC = () => {
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
+        // Offset
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
@@ -104,9 +103,7 @@ const App: React.FC = () => {
   };
 
   const handleMove = useCallback((e: any) => {
-    // Se estiver a editar texto, não mexe nada
     if (isEditingText) return; 
-    
     if (!activeHandle && !draggingIdRef.current) return;
     if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
 
@@ -231,15 +228,11 @@ const App: React.FC = () => {
       const target = captureTargetRef.current;
       if (!target) return;
       
-      console.log("Gerando PDF...");
-
-      // 1. Calcular Limites (Campo Completo)
       let minX = 0;
       let minY = 0;
       let maxX = selectedSport.dimensions.width;
       let maxY = selectedSport.dimensions.height;
 
-      // Expandir se houver items fora
       if(cameras.length > 0) {
           cameras.forEach(cam => {
           if (cam.x1 !== undefined) {
@@ -252,19 +245,16 @@ const App: React.FC = () => {
           });
       }
 
-      // Margem
       const padding = 100;
       minX -= padding; minY -= padding; maxX += padding; maxY += padding;
       
       const w = maxX - minX;
       const h = maxY - minY;
       
-      // Compensar Padding do Wrapper (p-32 = 128px)
       const wrapperOffset = 128;
       const captureX = minX + wrapperOffset;
       const captureY = minY + wrapperOffset;
 
-      // HTML2Canvas
       const canvas = await html2canvas(target, { 
         scale: 2, 
         x: captureX, y: captureY, width: w, height: h,
@@ -275,7 +265,6 @@ const App: React.FC = () => {
         logging: false
       });
       
-      // JsPDF
       const doc = new jsPDF('l', 'mm', 'a4');
       doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
       doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
@@ -314,22 +303,21 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO (Corrigido com select-text)
+    // 1. TEXTO (Contentor pointer-events-none, mas filho auto e select-text)
     if (isText) {
       return (
         <div 
-          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'border border-blue-500 rounded' : ''}`}
+          className="draggable-item absolute flex items-center justify-center pointer-events-none"
           data-id={cam.id}
           style={{ 
              left: cam.x, top: cam.y, 
              width: 200, height: 40,
              transform: 'translate(-50%, -50%)',
-             zIndex: isSelected ? 100 : 20,
-             cursor: isEditingText ? 'text' : 'move'
+             zIndex: isSelected ? 100 : 20
           }}
         >
           <div 
-            className="text-editable w-full text-center outline-none select-text" // select-text é vital
+            className={`text-editable w-full text-center outline-none select-text pointer-events-auto cursor-text ${isSelected ? 'border border-blue-500 rounded' : ''}`}
             contentEditable={isSelected && isEditingText}
             suppressContentEditableWarning
             onDoubleClick={(e) => {
@@ -344,9 +332,7 @@ const App: React.FC = () => {
             style={{ 
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
-                color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                cursor: isEditingText ? 'text' : 'default',
-                pointerEvents: 'auto'
+                color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)'
             }}
           >
             {cam.text}
@@ -355,7 +341,7 @@ const App: React.FC = () => {
       );
     }
 
-    // 2. VETORES
+    // 2. VETORES (CRÍTICO: pointer-events-none no contentor, mas auto na linha invisível)
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -368,9 +354,11 @@ const App: React.FC = () => {
       const angle = Math.atan2(ly2 - ly1, lx2 - lx1) * 180 / Math.PI;
 
       return (
-        <div className="draggable-item absolute" data-id={cam.id} style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}>
+        <div className="draggable-item absolute pointer-events-none" data-id={cam.id} style={{ left: vMinX, top: vMinY, width: vW, height: vH, zIndex: isSelected ? 90 : 15 }}>
           <svg width="100%" height="100%" viewBox={`0 0 ${vW} ${vH}`} style={{ overflow: 'visible' }}>
-            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer' }} />
+            {/* LINHA DE TOQUE INVISÍVEL: pointer-events-auto */}
+            <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke="transparent" strokeWidth="25" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
+            {/* LINHA VISÍVEL: pointer-events-none */}
             <line x1={lx1} y1={ly1} x2={lx2} y2={ly2} stroke={isSelected ? "#2196F3" : "#FFF"} strokeWidth="3" strokeDasharray={cam.type === CameraType.ARROW ? "6,4" : "0"} style={{ pointerEvents: 'none' }} />
             {cam.type === CameraType.ARROW && <path d="M0,0 L-14,7 L-14,-7 Z" fill={isSelected ? "#2196F3" : "#FFF"} transform={`translate(${lx2}, ${ly2}) rotate(${angle})`} style={{ pointerEvents: 'none' }} />}
           </svg>
@@ -384,10 +372,10 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS (Correção PDF: Números centrados sem Flexbox)
+    // 3. CÂMARAS (Contentor auto)
     return (
       <div 
-         className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
+         className={`draggable-item absolute flex items-center justify-center pointer-events-auto ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
          data-id={cam.id}
          style={{ 
             left: cam.x, top: cam.y, 
@@ -405,13 +393,13 @@ const App: React.FC = () => {
           {CAMERA_ASSETS[cam.type].icon}
         </div>
         {cam.nr && (
-          // CORREÇÃO PDF: Em vez de Flexbox, usamos text-align: center e line-height
+          // CORREÇÃO PDF: Flexbox robusto para centrar
           <div 
-            className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30"
+            className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30 flex items-center justify-center"
             style={{ 
               width: '16px', height: '16px', 
-              fontSize: '10px', fontWeight: 'bold',
-              textAlign: 'center', lineHeight: '14px' // Ajuste fino para centrar verticalmente
+              fontSize: '9px', fontWeight: 'bold', // Reduzi ligeiramente a fonte
+              padding: 0 // Importante para o PDF
             }}
           >
             {cam.nr}
@@ -422,7 +410,6 @@ const App: React.FC = () => {
   };
 
   return (
-    // REMOVIDO 'select-none' global para permitir edição de texto
     <div className="flex flex-col h-screen overflow-hidden bg-[#1E1E1E] text-white" onMouseDown={handleStart} onTouchStart={handleStart}>
       <header className="h-16 bg-[#121212] border-b border-white/5 flex items-center justify-between px-6 z-30 shrink-0 shadow-lg">
         <div className="flex items-center gap-8">
