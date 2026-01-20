@@ -1,0 +1,5 @@
+{
+  "name": "ML Plans - Broadcast Camera Planner",
+  "description": "A comprehensive camera planning tool for sports broadcast production, allowing users to visualize sports fields, place cameras, and auto-generate technical plans.",
+  "requestFramePermissions": []
+}
