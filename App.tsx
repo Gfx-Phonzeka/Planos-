@@ -7,19 +7,16 @@ import { CAMERA_ASSETS } from './constants';
 import { SPORTS_DATABASE } from './sportsData';
 
 const App: React.FC = () => {
-  // --- ESTADO GLOBAL ---
   const [selectedSport, setSelectedSport] = useState<Sport>(SPORTS_DATABASE[0]);
   const [cameras, setCameras] = useState<PlacedCamera[]>([]);
   const [projectTitle, setProjectTitle] = useState('EVENTO_BROADCAST_LIVE');
   const [location, setLocation] = useState('Estádio Nacional');
   const [time, setTime] = useState('21:00');
   
-  // --- ESTADO DE INTERAÇÃO ---
   const [draggedType, setDraggedType] = useState<CameraType | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEditingText, setIsEditingText] = useState(false);
   
-  // --- ESTADO DE DRAG & DROP ---
   const [activeHandle, setActiveHandle] = useState<{ id: string, index: number } | null>(null);
   const [isDraggingItem, setIsDraggingItem] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -48,13 +45,14 @@ const App: React.FC = () => {
 
   // --- HANDLERS ---
   const handleStart = (e: any) => {
-    // 1. SE ESTIVER A EDITAR TEXTO, IMPEDIR ARRASTO E PERMITIR FOCO
+    // SE ESTIVER A EDITAR TEXTO:
+    // Permite clicar dentro do texto para mover o cursor, mas bloqueia o arrasto do contentor.
     if (isEditingText) {
-      // Se clicarmos fora do texto enquanto editamos, paramos a edição
       if (!e.target.closest('.text-editable')) {
+        // Clicou fora -> Termina edição
         setIsEditingText(false);
       } else {
-        // Se clicarmos no texto, permitimos a propagação para que o cursor funcione
+        // Clicou dentro -> Deixa o evento passar para o contentEditable funcionar
         return; 
       }
     }
@@ -64,7 +62,7 @@ const App: React.FC = () => {
     const pos = getPointerPos(e);
     const target = e.target as HTMLElement;
 
-    // 2. DETETAR HANDLE (Pontos de Vetor)
+    // 1. HANDLE (Pontos de Vetor)
     const handle = target.closest('.handle') as HTMLElement;
     if (handle) {
       if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
@@ -72,26 +70,24 @@ const App: React.FC = () => {
       return;
     }
 
-    // 3. DETETAR ITEM ARRÁSTAVEL
+    // 2. ITEM ARRÁSTAVEL
     const item = target.closest('.draggable-item') as HTMLElement;
-    
     if (item) {
-      // Importante: Não fazer preventDefault imediatamente em textos para permitir doubleClick, 
-      // mas aqui estamos a tratar do Drag start.
-      if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
-      
       const id = item.dataset.id!;
       const currentCam = cameras.find(c => c.id === id);
       
+      // Lógica Especial para Texto:
+      // Se for texto, não faz preventDefault no touchStart para não bloquear o teclado virtual/seleção
+      // Se não for texto, prevenimos o default para evitar scrolls indesejados
+      if (currentCam?.type !== CameraType.TEXT) {
+         if (e.cancelable && e.type !== 'touchstart') e.preventDefault();
+      }
+
       if (currentCam) {
         setSelectedId(id);
-        
-        // Se for texto, não inicia drag imediatamente se já estiver selecionado (facilita dblclick)
-        // Mas se for arrasto, queremos arrastar.
         draggingIdRef.current = id;
         setIsDraggingItem(true);
         
-        // Offset
         if (currentCam.type === CameraType.ARROW || currentCam.type === CameraType.LINE) {
            setDragOffset({ x: pos.x, y: pos.y }); 
         } else {
@@ -108,14 +104,15 @@ const App: React.FC = () => {
   };
 
   const handleMove = useCallback((e: any) => {
-    if (isEditingText || !canvasRef.current) return;
-    if (!activeHandle && !draggingIdRef.current) return;
+    // Se estiver a editar texto, não mexe nada
+    if (isEditingText) return; 
     
+    if (!activeHandle && !draggingIdRef.current) return;
     if (e.cancelable && e.type !== 'mousemove') e.preventDefault();
 
     const pos = getPointerPos(e);
 
-    // 1. Mover Handle
+    // Mover Handle
     if (activeHandle) {
       setCameras(prev => prev.map(c => {
         if (c.id === activeHandle.id) {
@@ -136,7 +133,7 @@ const App: React.FC = () => {
       return;
     }
 
-    // 2. Mover Item
+    // Mover Item
     if (draggingIdRef.current) {
       setCameras(prev => prev.map(c => {
         if (c.id === draggingIdRef.current) {
@@ -179,11 +176,10 @@ const App: React.FC = () => {
     };
   }, [handleMove, handleEnd]);
 
-  // --- DROP DA BIBLIOTECA ---
+  // --- DROP ---
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedType || !canvasRef.current) return;
-
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -229,7 +225,7 @@ const App: React.FC = () => {
     setCameras(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  // --- EXPORTAR PDF (LÓGICA CORRIGIDA: CAMPO COMPLETO) ---
+  // --- EXPORTAR PDF ---
   const exportPDF = async () => {
     try {
       const target = captureTargetRef.current;
@@ -237,14 +233,13 @@ const App: React.FC = () => {
       
       console.log("Gerando PDF...");
 
-      // 1. INICIAR COM OS LIMITES TOTAIS DO CAMPO
-      // Isto garante que o campo aparece SEMPRE na totalidade, mesmo sem câmaras
+      // 1. Calcular Limites (Campo Completo)
       let minX = 0;
       let minY = 0;
       let maxX = selectedSport.dimensions.width;
       let maxY = selectedSport.dimensions.height;
 
-      // 2. EXPANDIR SE HOUVER CÂMARAS FORA DO CAMPO (Tribuna)
+      // Expandir se houver items fora
       if(cameras.length > 0) {
           cameras.forEach(cam => {
           if (cam.x1 !== undefined) {
@@ -257,33 +252,30 @@ const App: React.FC = () => {
           });
       }
 
-      // 3. ADICIONAR MARGEM DE SEGURANÇA
+      // Margem
       const padding = 100;
       minX -= padding; minY -= padding; maxX += padding; maxY += padding;
       
-      // O minX pode ser negativo se houver câmaras na esquerda, isso é ok.
-      // O maxX deve ser pelo menos a largura do campo.
-
       const w = maxX - minX;
       const h = maxY - minY;
       
-      // 4. COMPENSAR PADDING DO WRAPPER (p-32 = 128px)
-      // O html2canvas captura o 'target', o conteúdo começa em (128,128)
+      // Compensar Padding do Wrapper (p-32 = 128px)
       const wrapperOffset = 128;
       const captureX = minX + wrapperOffset;
       const captureY = minY + wrapperOffset;
 
-      // 5. CAPTURAR COM windowWidth/Height (Evita cortes)
+      // HTML2Canvas
       const canvas = await html2canvas(target, { 
         scale: 2, 
         x: captureX, y: captureY, width: w, height: h,
         backgroundColor: '#2D2D2D', 
         useCORS: true,
-        windowWidth: target.scrollWidth + 1000, // Margem grande para garantir
-        windowHeight: target.scrollHeight + 1000
+        windowWidth: target.scrollWidth + 1000,
+        windowHeight: target.scrollHeight + 1000,
+        logging: false
       });
       
-      // 6. GERAR PDF
+      // JsPDF
       const doc = new jsPDF('l', 'mm', 'a4');
       doc.setFillColor(30, 30, 30); doc.rect(0, 0, 297, 25, 'F');
       doc.setTextColor(255); doc.setFontSize(18); doc.text(projectTitle.toUpperCase(), 10, 11);
@@ -294,7 +286,6 @@ const App: React.FC = () => {
       const imgRatio = w / h;
       let finalW = 180; let finalH = finalW / imgRatio;
       
-      // Ajustar se for demasiado alto
       if (finalH > 160) { finalH = 160; finalW = finalH * imgRatio; }
       
       doc.addImage(imgData, 'PNG', 10, 32, finalW, finalH);
@@ -317,13 +308,13 @@ const App: React.FC = () => {
     }
   };
 
-  // --- RENDERIZADOR ---
+  // --- RENDER ITEM ---
   const renderItem = (cam: PlacedCamera) => {
     const isSelected = selectedId === cam.id;
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO (Com select-text e lógica de foco melhorada)
+    // 1. TEXTO (Corrigido com select-text)
     if (isText) {
       return (
         <div 
@@ -338,11 +329,12 @@ const App: React.FC = () => {
           }}
         >
           <div 
-            className="text-editable w-full text-center outline-none select-text" // ADICIONADO select-text
+            className="text-editable w-full text-center outline-none select-text" // select-text é vital
             contentEditable={isSelected && isEditingText}
             suppressContentEditableWarning
             onDoubleClick={(e) => {
-              e.stopPropagation(); // Impede arrasto ao fazer double click
+              e.preventDefault(); 
+              e.stopPropagation();
               setIsEditingText(true);
             }}
             onBlur={(e) => { 
@@ -353,7 +345,8 @@ const App: React.FC = () => {
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
                 color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                cursor: 'text'
+                cursor: isEditingText ? 'text' : 'default',
+                pointerEvents: 'auto'
             }}
           >
             {cam.text}
@@ -391,7 +384,7 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS
+    // 3. CÂMARAS (Correção PDF: Números centrados sem Flexbox)
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
@@ -412,7 +405,15 @@ const App: React.FC = () => {
           {CAMERA_ASSETS[cam.type].icon}
         </div>
         {cam.nr && (
-          <div className="absolute -top-1 -right-1 bg-black border border-white text-[9px] text-white rounded-full w-4 h-4 flex items-center justify-center font-bold z-30">
+          // CORREÇÃO PDF: Em vez de Flexbox, usamos text-align: center e line-height
+          <div 
+            className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30"
+            style={{ 
+              width: '16px', height: '16px', 
+              fontSize: '10px', fontWeight: 'bold',
+              textAlign: 'center', lineHeight: '14px' // Ajuste fino para centrar verticalmente
+            }}
+          >
             {cam.nr}
           </div>
         )}
@@ -421,7 +422,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden select-none bg-[#1E1E1E] w-screen" onMouseDown={handleStart} onTouchStart={handleStart}>
+    // REMOVIDO 'select-none' global para permitir edição de texto
+    <div className="flex flex-col h-screen overflow-hidden bg-[#1E1E1E] text-white" onMouseDown={handleStart} onTouchStart={handleStart}>
       <header className="h-16 bg-[#121212] border-b border-white/5 flex items-center justify-between px-6 z-30 shrink-0 shadow-lg">
         <div className="flex items-center gap-8">
           <div className="flex flex-col">
@@ -443,7 +445,7 @@ const App: React.FC = () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden w-full">
-        <aside className="w-[280px] bg-[#1E1E1E] border-r border-white/5 overflow-y-auto shrink-0 z-10">
+        <aside className="w-[280px] bg-[#1E1E1E] border-r border-white/5 overflow-y-auto shrink-0 z-10 select-none">
           <div className="p-4 text-[8px] font-bold text-gray-600 uppercase tracking-widest border-b border-white/5">Disciplinas</div>
           {SPORTS_DATABASE.map(sport => (
             <button key={sport.id} onClick={() => { setSelectedSport(sport); setCameras([]); setSelectedId(null); }} className={`w-full text-left px-5 py-3.5 text-[10px] font-medium transition-all border-b border-white/5 ${selectedSport.id === sport.id ? 'border-l-4 border-[#FF5722] text-white bg-white/5' : 'text-gray-500 hover:text-gray-200'}`}>{sport.name}</button>
@@ -463,7 +465,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-          <footer className="h-40 bg-[#121212] border-t border-white/5 overflow-y-auto shrink-0 z-10">
+          <footer className="h-40 bg-[#121212] border-t border-white/5 overflow-y-auto shrink-0 z-10 select-none">
             <table className="w-full text-left text-[9px]">
               <thead className="sticky top-0 bg-[#121212] text-gray-600 uppercase font-black border-b border-white/5">
                 <tr><th className="px-6 py-3 w-16">ID</th><th className="px-4 py-3">Posição</th><th className="px-4 py-3">Equipamento</th><th className="px-4 py-3">Ótica</th></tr>
@@ -479,7 +481,7 @@ const App: React.FC = () => {
           </footer>
         </main>
 
-        <aside className="w-[280px] bg-[#1E1E1E] border-l border-white/10 flex flex-col shrink-0 z-10 overflow-y-auto">
+        <aside className="w-[280px] bg-[#1E1E1E] border-l border-white/10 flex flex-col shrink-0 z-10 overflow-y-auto select-none">
           <div className="p-5 border-b border-white/10">
             <h3 className="text-[9px] font-black text-gray-600 uppercase mb-4 tracking-tighter">Toolkit de Assets</h3>
             <div className="grid grid-cols-3 gap-3">
