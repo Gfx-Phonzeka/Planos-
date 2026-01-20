@@ -255,8 +255,7 @@ const App: React.FC = () => {
       doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
       doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
       
-      // ALTERAÇÃO PARA JPEG (Resolve o problema do tamanho de ficheiro)
-      // 0.8 é a qualidade (0 a 1), reduz drasticamente o tamanho vs PNG
+      // Mantém JPEG para PDF leve
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
       
       const imgRatio = w / h;
@@ -289,6 +288,7 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
+    // 1. TEXTO EDITÁVEL
     if (isText) {
       return (
         <div 
@@ -317,7 +317,9 @@ const App: React.FC = () => {
             style={{ 
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
-                color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+                color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+                // CORREÇÃO: Margem negativa para subir o texto no PDF
+                marginTop: '-4px' 
             }}
           >
             {cam.text}
@@ -326,6 +328,7 @@ const App: React.FC = () => {
       );
     }
 
+    // 2. VETORES
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -354,6 +357,7 @@ const App: React.FC = () => {
       );
     }
 
+    // 3. CÂMARAS
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center pointer-events-auto ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
@@ -374,17 +378,17 @@ const App: React.FC = () => {
           {CAMERA_ASSETS[cam.type].icon}
         </div>
         {cam.nr && (
-          // CORREÇÃO CENTRAMENTO (FLEX + BORDER-BOX)
           <div 
             className="absolute -top-1 -right-1 bg-black border border-white text-white rounded-full z-30"
             style={{ 
               width: '16px', height: '16px', 
               fontSize: '9px', fontWeight: 'bold',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxSizing: 'border-box' // Garante que a borda não afeta o cálculo do centro
+              boxSizing: 'border-box'
             }}
           >
-            {cam.nr}
+            {/* CORREÇÃO: Span com margem negativa para subir o número no PDF */}
+            <span style={{ marginTop: '-2px', display: 'block' }}>{cam.nr}</span>
           </div>
         )}
       </div>
