@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export enum CameraType {
@@ -21,28 +22,24 @@ export enum CameraType {
 }
 
 export interface PlacedCamera {
-  id: string | number;
+  id: string;
   nr?: number;
-  displayId?: string | number | null;
-  type: string; 
+  type: CameraType;
   x: number;
   y: number;
-  x1?: number; 
+  x1?: number;
   y1?: number;
   x2?: number;
   y2?: number;
   rotation: number;
   scale: number;
   flipped?: boolean;
-  position?: string;
-  lens?: string;
+  position: string;
+  config: string;
+  mount: string;
+  lens: string;
   text?: string;
 }
-
-// Estes exports extra resolvem os erros do App.tsx
-export type CameraItem = PlacedCamera;
-export type VectorItem = PlacedCamera;
-export interface Point { x: number; y: number; }
 
 export interface Sport {
   id: string;
