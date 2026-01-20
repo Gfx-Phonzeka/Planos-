@@ -255,7 +255,7 @@ const App: React.FC = () => {
       doc.setFontSize(10); doc.text(`${location} | ${time}`, 10, 19);
       doc.setFontSize(8); doc.text("ML PLANS", 287, 21, { align: 'right' });
       
-      // Mantém JPEG para PDF leve
+      // JPEG 0.8 para PDF leve
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
       
       const imgRatio = w / h;
@@ -288,7 +288,6 @@ const App: React.FC = () => {
     const isText = cam.type === CameraType.TEXT;
     const isVector = [CameraType.ARROW, CameraType.LINE].includes(cam.type);
 
-    // 1. TEXTO EDITÁVEL
     if (isText) {
       return (
         <div 
@@ -318,8 +317,8 @@ const App: React.FC = () => {
                 fontSize: `${16 * cam.scale}px`, 
                 transform: `rotate(${cam.rotation}deg)`,
                 color: '#FFF', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-                // CORREÇÃO: Margem negativa para subir o texto no PDF
-                marginTop: '-4px' 
+                // FIX: Subir o texto editável agressivamente para compensar PDF
+                marginTop: '-8px' 
             }}
           >
             {cam.text}
@@ -328,7 +327,6 @@ const App: React.FC = () => {
       );
     }
 
-    // 2. VETORES
     if (isVector) {
       const vMinX = Math.min(cam.x1!, cam.x2!);
       const vMinY = Math.min(cam.y1!, cam.y2!);
@@ -357,7 +355,6 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. CÂMARAS
     return (
       <div 
          className={`draggable-item absolute flex items-center justify-center pointer-events-auto ${isSelected ? 'ring-1 ring-blue-400 rounded' : ''}`}
@@ -387,8 +384,8 @@ const App: React.FC = () => {
               boxSizing: 'border-box'
             }}
           >
-            {/* CORREÇÃO: Span com margem negativa para subir o número no PDF */}
-            <span style={{ marginTop: '-2px', display: 'block' }}>{cam.nr}</span>
+            {/* FIX: Margem negativa agressiva (6px) para centrar no PDF */}
+            <span style={{ marginTop: '-6px', display: 'block' }}>{cam.nr}</span>
           </div>
         )}
       </div>
